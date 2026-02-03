@@ -150,7 +150,7 @@ mutate(
                                            matrix(c(lon_Y, lat_Y), ncol=2))
 )
 
-  # keep only useful columns (keep time + station for split/encoding)
+# keep only useful columns
 df_model <- df_model %>%
     select(time, station, Y_obs,
            hour_sin, hour_cos, month_sin, month_cos,
@@ -163,14 +163,14 @@ head(df_model)
 get_dist_mat <- function(df_lonlat) {
   # df_lonlat must have cols Longitude, Latitude
   n <- nrow(df_lonlat)
-  out <- matrix(0, n, n)
+  dist <- matrix(0, n, n)
   for (i in 1:n) {
-    out[i, ] <- geosphere::distHaversine(
+    dist[i, ] <- geosphere::distHaversine(
       cbind(df_lonlat$Longitude[i], df_lonlat$Latitude[i]),
       cbind(df_lonlat$Longitude, df_lonlat$Latitude)
     )
   }
-  out
+  return(dist)
 }
 
 # temporal split function
@@ -180,7 +180,7 @@ make_time_split <- function(df, train_frac = 0.8, seed = 123) {
   train_times <- sample(times, size = floor(train_frac * length(times)))
   train_idx <- which(df$time %in% train_times)
   valid_idx <- setdiff(seq_len(nrow(df)), train_idx)
-  list(train_idx = train_idx, valid_idx = valid_idx)
+  return(list(train_idx = train_idx, valid_idx = valid_idx))
 }
 
 split <- make_time_split(df_model, train_frac = 0.8, seed = 123)
@@ -195,10 +195,11 @@ standardize_train_only <- function(df, train_idx, scale_cols) {
   df[, scale_cols] <- sweep(df[, scale_cols, drop=FALSE], 2, mu, "-")
   df[, scale_cols] <- sweep(df[, scale_cols, drop=FALSE], 2, sdv, "/")
 
-  list(df = df, mu = mu, sdv = sdv)
+  return(list(df = df, mu = mu, sdv = sdv))
 }
 
 
+# To build X and Y tensors for pinnEV
 build_xy <- function(df, x_cols, train_idx, valid_idx) {
   X_mat <- data.matrix(df[, x_cols])
   n_obs <- nrow(df); p <- ncol(X_mat)
@@ -213,17 +214,17 @@ build_xy <- function(df, x_cols, train_idx, valid_idx) {
   Y.train <- array(Y.train, dim = c(n_obs, 1))
   Y.valid <- array(Y.valid, dim = c(n_obs, 1))
 
-  list(
+  return(list(
     X.s = list(X.nn.s = X_all),
     X.k = list(X.nn.k = X_all),
     Y.train = Y.train,
     Y.valid = Y.valid
-  )
+  ))
 }
 
 
 evaluate_model <- function(df, valid_idx, fit, X.s, X.k, probs = c(0.95, 0.99)) {
-  out <- eGPD.NN.predict(X.s = X.s, X.k = X.k, fit$model)
+  out <- eGPD.NN.predict(X.s = X.s, X.k = X.k, fit$model) # pinnEV prediction
 
   # out$pred.sigma etc are typically arrays (n_obs,1) or vectors; coerce
   sigma_hat <- as.vector(out$pred.sigma)
@@ -249,17 +250,17 @@ evaluate_model <- function(df, valid_idx, fit, X.s, X.k, probs = c(0.95, 0.99)) 
     }
   }
 
-  res
+  return(res)
 }
 
 
 make_config <- function(name, use_corres = FALSE, use_station_oh = FALSE,
                         widths = c(8, 4), init = c("mean", "median")) {
-  list(name = name,
+  return(list(name = name,
        use_corres = use_corres,
        use_station_oh = use_station_oh,
        widths = widths,
-       init = match.arg(init))
+       init = match.arg(init)))
 }
 
 
@@ -319,7 +320,7 @@ run_one_config <- function(df_model, split, cfg,
   # evaluate
   metrics <- evaluate_model(df, split$valid_idx, fit, xy$X.s, xy$X.k)
 
-  data.frame(
+  res <- data.frame(
     model = cfg$name,
     init = cfg$init,
     widths = paste(cfg$widths, collapse = "-"),
@@ -331,6 +332,7 @@ run_one_config <- function(df_model, split, cfg,
     exc_rate_0.99 = if (!is.null(metrics$exc_rate_0.99)) metrics$exc_rate_0.99 else NA_real_,
     stringsAsFactors = FALSE
   )
+  return(res)
 }
 
 
