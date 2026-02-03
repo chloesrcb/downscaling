@@ -1,3 +1,6 @@
+rm(list = ls())
+cat("\014")
+
 muse <- FALSE
 if (muse) {
   # Get the muse folder

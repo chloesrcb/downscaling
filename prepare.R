@@ -20,7 +20,6 @@ if (muse) {
 
 library(future)
 
-
 # BUILD DOWNSCALING TABLE (CSV)
 filename_com <- paste0(data_folder, "comephore/comephore_2008_2024_5km.csv")
 filename_loc_px <- paste0(data_folder, "comephore/loc_px_zoom_5km.csv")
@@ -79,13 +78,13 @@ filtered_comephore <- rain_com %>%
   filter(date >= extended_min_date & date <= extended_max_date)
 
 grid_df <- data.frame(
-  time   = character(),
-  station= character(),
-  lon_Y  = numeric(),
-  lat_Y  = numeric(),
-  lon_X  = numeric(),
-  lat_X  = numeric(),
-  Y_obs  = numeric(),
+  time = character(),
+  station = character(),
+  lon_Y = numeric(),
+  lat_Y = numeric(),
+  lon_X = numeric(),
+  lat_X = numeric(),
+  Y_obs = numeric(),
   stringsAsFactors = FALSE
 )
 for (i in 1:27) grid_df[[paste0("X", i)]] <- numeric()
