@@ -1,0 +1,84 @@
+
+# General
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(data.table)
+
+# spatial
+library(sf)
+library(geodist)
+library(geosphere)
+
+# temporal
+library(datetime)
+
+# Plot
+library(reshape2)
+library(Rcpp)
+library(ggplot2)
+library(gridExtra)
+library(latex2exp)
+library(ggpubr)
+library(factoextra)
+library(tidyverse)
+library(tibble)
+library(hrbrthemes)
+library(reshape)
+library(matrixStats)
+library(gridExtra)
+
+# Extremes
+library(fExtremes)
+library(extRemes)
+library(ismev)
+library(evd)
+library(mev)
+library(POT)
+
+# Models
+library(fields)
+library(lmtest)
+library(bbmle)
+
+# Tables and Latex
+library(kableExtra)
+library(data.table)
+
+# Parallel
+library(parallel)
+
+# PERSONNALIZATION ############################################################
+# ggplot theme
+# personnalized theme
+btf_theme <- theme_minimal() +
+  theme(axis.text.x = element_text(size = 15, angle = 0),
+        axis.text.y = element_text(size = 15),
+        axis.title.x = element_text(size = 20),
+        axis.title.y = element_text(size = 20),
+        axis.line = element_blank(),  # Remove axis lines
+        panel.border = element_blank(),  # Remove plot border
+        panel.background = element_rect(fill = "transparent", color = NA),
+        # Remove plot background
+        axis.text = element_blank(),  # Remove axis text
+        axis.ticks = element_blank(),  # Remove axis ticks
+        plot.background = element_rect(fill = "transparent", color = NA),
+        panel.grid = element_line(color = "#5c595943"))
+
+btf_boxplot_theme <- btf_theme +
+  theme(
+    axis.line = element_blank(),  # Remove axis lines
+    panel.border = element_blank(),  # Remove plot border
+    panel.background = element_rect(fill = "transparent",
+                                    color = NA),  # Remove plot background
+    axis.text = element_blank(),  # Remove axis text
+    axis.text.x = element_text(angle = 0),
+    axis.ticks = element_blank(),  # Remove axis ticks
+    panel.grid = element_line(color = "#5c595943")
+  )
+# my green color
+btfgreen <- "#69b3a2"
+
+# images folder
+im_folder <- "../phd_extremes/thesis/resources/images/"
+data_folder <- "../phd_extremes/data/"
