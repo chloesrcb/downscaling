@@ -54,3 +54,7 @@ rsconnect/
 checkpoint
 
 model*
+
+# cache python
+__pycache__/
+/.venv/
