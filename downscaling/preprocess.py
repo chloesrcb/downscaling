@@ -130,18 +130,29 @@ def build_station_radius_pixels(
     location_gauges["lon_X"] = loc_px["Longitude"].iloc[nearest_idx].to_numpy()
     location_gauges["lat_X"] = loc_px["Latitude"].iloc[nearest_idx].to_numpy()
 
-    # pixels within radius around the closest pixel (centered on the pixel, not the gauge)
+    # pixels within radius around the closest pixel
     station_pixels: Dict[str, List[str]] = {}
+
     for _, row in location_gauges.iterrows():
         st = row["station"]
+
         cidx = int(np.where(loc_px["pixel_name"].to_numpy() == row["closest_pixel"])[0][0])
         cx, cy = loc_px["X_m"].iloc[cidx], loc_px["Y_m"].iloc[cidx]
+
         dx = loc_px["X_m"].to_numpy() - cx
         dy = loc_px["Y_m"].to_numpy() - cy
         dist = np.sqrt(dx * dx + dy * dy)
+
         mask = dist <= radius_m
 
-        station_pixels[st] = loc_px.loc[mask, "pixel_name"].astype(str).tolist()
+        pix_df = loc_px.loc[mask, ["pixel_name", "X_m", "Y_m"]].copy()
+        pix_df["dist_to_center"] = np.sqrt(
+            (pix_df["X_m"] - cx) ** 2 + (pix_df["Y_m"] - cy) ** 2
+        )
+
+        pix_df = pix_df.sort_values("dist_to_center")
+
+        station_pixels[st] = pix_df["pixel_name"].astype(str).tolist()
 
     return location_gauges, loc_px, station_pixels
 
