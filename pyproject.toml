@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "downscaling"
+version = "0.1.0"
+description = "Statistical downscaling models for OMSEV and COMEPHORE precipitation data"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib",
+    "torch",
+]
+
+[tool.setuptools.packages.find]
+where = ["downscaling"]

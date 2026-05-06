@@ -1,4 +1,4 @@
-# %%
+
 import os
 import re
 from pathlib import Path
@@ -8,33 +8,11 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from downscaling.paths import FIG_DIR, TAB_DIR
+from downscaling.config import RAIN_THRESHOLD_POSITIVE, BUCKET_RESOLUTION, TIME_COLS, SPATIAL_COLS
+from downscaling.data import get_x_cols27_downscaling
 
-# %%
-DATA_FOLDER = os.environ.get("DATA_FOLDER", "../phd_extremes/data/")
-DOWNSCALING_TABLE = os.path.join(
-    DATA_FOLDER,
-    "downscaling/downscaling_table_named_2019_2024.csv"
-)
-IM_FOLDER = "../phd_extremes/thesis/resources/images/downscaling/"
-OUT_DIR = os.path.join(
-    IM_FOLDER,
-    "analysis_figures"
-)
 
-FIG_DIR = os.path.join(OUT_DIR, "figures")
-TAB_DIR = os.path.join(OUT_DIR, "tables")
-
-os.makedirs(FIG_DIR, exist_ok=True)
-os.makedirs(TAB_DIR, exist_ok=True)
-
-# %%
-TIME_COLS = ["tod_sin", "tod_cos", "doy_sin", "doy_cos", "month_sin", "month_cos"]
-SPATIAL_COLS = ["lat_Y", "lon_Y", "lat_X", "lon_X"]
-
-BUCKET_RESOLUTION = 0.2153
-RAIN_THRESHOLD_POSITIVE = 0.0
-
-# %%
 def savefig(fig, name: str, dpi: int = 300):
     """Save one figure as PNG and PDF."""
     png_path = os.path.join(FIG_DIR, f"{name}.png")
@@ -43,6 +21,7 @@ def savefig(fig, name: str, dpi: int = 300):
     fig.savefig(pdf_path, bbox_inches="tight")
     print(f"Saved: {png_path}")
     print(f"Saved: {pdf_path}")
+
 
 
 def pretty_covariate_name(name: str) -> str:
@@ -83,21 +62,9 @@ def pretty_covariate_name(name: str) -> str:
     return replacements.get(name, name)
 
 
+
 def add_grid(ax, axis: str = "both"):
     ax.grid(True, axis=axis, alpha=0.3)
-
-
-# %%
-def get_x_cols27_downscaling(df: pd.DataFrame) -> list[str]:
-    pat = re.compile(r"^X_p(\d{2})_dt(-1h|0h|\+1h)$")
-    cols = [c for c in df.columns if pat.match(c)]
-    order_dt = {"-1h": 0, "0h": 1, "+1h": 2}
-
-    def key(c):
-        m = pat.match(c)
-        return (int(m.group(1)), order_dt[m.group(2)])
-
-    return sorted(cols, key=key)
 
 def prepare_analysis_dataframe(df_raw: pd.DataFrame):
     """
@@ -132,9 +99,7 @@ def prepare_analysis_dataframe(df_raw: pd.DataFrame):
     df["month_sin"] = np.sin(2 * np.pi * (df["month"] - 1) / 12.0)
     df["month_cos"] = np.cos(2 * np.pi * (df["month"] - 1) / 12.0)
 
-    # ------------------------------------------------------------
     # Radar summaries: all 27 covariates = 9 pixels x 3 temporal lags
-    # ------------------------------------------------------------
     df[x_cols27] = df[x_cols27].apply(pd.to_numeric, errors="coerce")
     X_block_all = df[x_cols27].to_numpy(dtype=float)
 
@@ -142,9 +107,7 @@ def prepare_analysis_dataframe(df_raw: pd.DataFrame):
     df["radar_mean"] = np.nanmean(X_block_all, axis=1)
     df["radar_sum"] = np.nansum(X_block_all, axis=1)
 
-    # ------------------------------------------------------------
     # Radar summaries at current hour only: dt0h
-    # ------------------------------------------------------------
     x_cols_dt0h = [c for c in x_cols27 if c.endswith("dt0h")]
     if len(x_cols_dt0h) == 0:
         raise ValueError("No current-hour radar columns ending with dt0h were found.")
@@ -155,11 +118,7 @@ def prepare_analysis_dataframe(df_raw: pd.DataFrame):
     df["radar_mean_dt0h"] = np.nanmean(X_block_dt0h, axis=1)
     df["radar_sum_dt0h"] = np.nansum(X_block_dt0h, axis=1)
 
-    # ------------------------------------------------------------
-    # Central/current pixel.
-    # If X_p01_dt0h is not the correct central pixel in your data,
-    # change this variable.
-    # ------------------------------------------------------------
+    # Central/current pixel 
     central_col = "X_p01_dt0h"
 
     if central_col in df.columns:
@@ -168,9 +127,7 @@ def prepare_analysis_dataframe(df_raw: pd.DataFrame):
         print(f"Warning: {central_col} not found. Using radar_max_dt0h instead.")
         df["radar_central_dt0h"] = df["radar_max_dt0h"]
 
-    # ------------------------------------------------------------
-    # Occurrence definitions
-    # ------------------------------------------------------------
+    # Occurrence
     df["gauge_occurrence"] = (df["Y_obs"] > RAIN_THRESHOLD_POSITIVE).astype(int)
 
     # Very broad definitions
@@ -191,12 +148,7 @@ def prepare_analysis_dataframe(df_raw: pd.DataFrame):
         df["radar_central_dt0h"] >= BUCKET_RESOLUTION
     ).astype(int)
 
-    # ------------------------------------------------------------
-    # Main definition used in figures/tables.
-    #
-    # Recommended for occurrence analysis:
-    # current-hour local radar value rather than 27-covariate sum.
-    # ------------------------------------------------------------
+ 
     df["radar_occurrence"] = df["radar_occurrence_central_dt0h"]
 
     # Joint occurrence used to define the positive-intensity dataset
@@ -258,8 +210,6 @@ def prepare_analysis_dataframe(df_raw: pd.DataFrame):
     return df_all, df_pos, x_cols27, x_cols_all
 
 
-# %%
-# Summary tables
 
 def save_summary_tables(df_all: pd.DataFrame, df_pos: pd.DataFrame, x_cols_all: list[str]):
     summary_rows = []
@@ -494,7 +444,6 @@ The table is computed before filtering observations for the positive-intensity E
 
     return latex
 
-# %%
 def fig_occurrence_contingency(df_all: pd.DataFrame):
     tab = pd.crosstab(
         df_all["gauge_occurrence"],
@@ -922,69 +871,3 @@ def fig_example_events(df_all: pd.DataFrame, n_events: int = 3):
         plt.tight_layout()
         savefig(fig, f"21_example_event_{i+1}_{pd.Timestamp(day).date()}")
         plt.close(fig)
-
-
-# %%
-df_raw = pd.read_csv(DOWNSCALING_TABLE, sep=";")
-df_raw["time"] = pd.to_datetime(df_raw["time"], utc=True)
-
-print("Raw shape:", df_raw.shape)
-print("Missing values in Y_obs:", df_raw["Y_obs"].isna().sum())
-print("Proportion of Y_obs = 0:", (df_raw["Y_obs"] == 0).mean())
-
-df_all, df_pos, x_cols27, x_cols_all = prepare_analysis_dataframe(df_raw)
-
-print("Prepared df_all shape:", df_all.shape)
-print("Prepared df_pos shape:", df_pos.shape)
-print("Number of radar pixel-time covariates:", len(x_cols27))
-print("Number of all candidate covariates:", len(x_cols_all))
-
-df_all.to_csv(os.path.join(TAB_DIR, "prepared_all_nonmissing_y.csv"), index=False)
-df_pos.to_csv(os.path.join(TAB_DIR, "prepared_positive_with_radar.csv"), index=False)
-
-save_summary_tables(df_all, df_pos, x_cols_all)
-
-summary, corrs_df, monthly_occ, hourly_occ, station_occ = save_summary_tables(
-    df_all, df_pos, x_cols_all
-)
-
-occ_def_comparison = save_occurrence_definition_comparison(df_all)
-save_occurrence_latex_table(df_all)
-
-print("\n=== Radar occurrence definition comparison ===")
-print(occ_def_comparison.to_string(index=False))
-
-fig_occurrence_contingency(df_all)
-fig_occurrence_rates_by_month_hour(df_all)
-
-# Figures on positive rainfall intensities.
-fig_positive_rainfall_distribution(df_pos)
-fig_survival_positive_rainfall(df_pos)
-fig_tipping_bucket_discretization(df_pos)
-
-# Radar-gauge relationship.
-fig_top_correlations(df_pos, x_cols_all)
-fig_lag_correlations(df_pos, x_cols27)
-fig_scatter_radar_gauge(df_pos, predictor="radar_max")
-
-# Also plot the most correlated radar covariate if available.
-corrs = (
-    df_pos[["Y_obs"] + x_cols_all]
-    .corr(numeric_only=True)["Y_obs"]
-    .drop("Y_obs")
-    .sort_values(ascending=False)
-)
-best_cov = corrs.index[0]
-fig_scatter_radar_gauge(df_pos, predictor=best_cov)
-
-# Conditional distributions.
-fig_conditional_distribution_by_radar(df_pos)
-fig_conditional_quantiles_by_radar(df_pos)
-
-# Temporal and spatial summaries.
-fig_temporal_intensity_patterns(df_pos)
-fig_station_spatial_patterns(df_all)
-
-# Example event days.
-fig_example_events(df_all, n_events=3)
-# %%
