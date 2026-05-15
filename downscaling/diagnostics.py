@@ -35,9 +35,9 @@ def summarize_model_comparison(res: pd.DataFrame) -> pd.DataFrame:
         "valid_loss_sum_mean": ("valid_loss_sum", "mean"),
         "crps_mean": ("crps_mean", "mean"),
         "crps_sum_mean": ("crps_sum", "mean"),
-        "twcrps_paper_sum_mean": ("twcrps_paper_sum", "mean"),
-        "twcrps_paper_mean_obs_mean": ("twcrps_paper_mean_obs", "mean"),
-        "twcrps_paper_mean_obs_thr_mean": ("twcrps_paper_mean_obs_thr", "mean"),
+        "twcrps_sum_mean": ("twcrps_sum", "mean"),
+        "twcrps_mean_obs_mean": ("twcrps_mean_obs", "mean"),
+        "twcrps_mean_obs_thr_mean": ("twcrps_mean_obs_thr", "mean"),
         "smad_mean": ("smad", "mean"),
         "smad_std": ("smad", "std"),
         "smad_original_mean": ("smad_original", "mean"),
@@ -64,9 +64,9 @@ def summarize_model_comparison(res: pd.DataFrame) -> pd.DataFrame:
         "valid_loss_sum_mean",
         "crps_mean",
         "crps_sum_mean",
-        "twcrps_paper_sum_mean",
-        "twcrps_paper_mean_obs_mean",
-        "twcrps_paper_mean_obs_thr_mean",
+        "twcrps_sum_mean",
+        "twcrps_mean_obs_mean",
+        "twcrps_mean_obs_thr_mean",
         "smad_mean",
         "smad_original_mean",
         "err50_mean",
@@ -83,7 +83,7 @@ def summarize_model_comparison(res: pd.DataFrame) -> pd.DataFrame:
     rank_cols = [
         "valid_loss_mean",
         "crps_mean",
-        "twcrps_paper_sum_mean",
+        "twcrps_sum_mean",
         "smad_original_mean",
         "smad_mean",
         "err95_mean",
@@ -97,7 +97,7 @@ def summarize_model_comparison(res: pd.DataFrame) -> pd.DataFrame:
     sort_cols = [
         c for c in [
             "valid_loss_mean",
-            "twcrps_paper_sum_mean",
+            "twcrps_sum_mean",
             "crps_mean",
             "smad_original_mean",
         ]

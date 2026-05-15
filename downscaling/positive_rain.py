@@ -177,89 +177,28 @@ fig.savefig(
 
 # %%
 #  NN hyperparameter grid
-
-print("TUNING_PRESET:", TUNING_PRESET)
-
-if TUNING_PRESET == "small":
-    nn_param_grid = {
-        "variant": ["both"],
-        "x_set_name": [
-            "central_only",
-            "summary_dt0h",
-            "all_pixels_dt0h",
-            "radar_summaries",
-        ],
-        "widths": [(2,), (4,), (4, 2), (6, 3)],
-        "lr": [1e-3, 5e-4],
-        "weight_decay": [0.0, 1e-4],
-        "batch_size": [64, 128],
-        "n_ep": [150],
-        "sigma_init": [SIGMA_INIT],
-        "kappa_init": [KAPPA_INIT],
-        "xi_init": [XI_INIT],
-        "censor_threshold": [0.22],
-        "init_source": ["default", "gam"],
-    }
-
-elif TUNING_PRESET == "medium":
-    nn_param_grid = {
-        "variant": ["both", "sigma_only", "kappa_only"],
-        "x_set_name": [
-            "central_only",
-            "summary_dt0h",
-            "local_pixels_dt0h",
-            "all_pixels_dt0h",
-            "radar_summaries",
-            "radar_all",
-            "radar_time",
-            "radar_time_space",
-        ],
-        "widths": [
-            (2,),
-            (4,),
-            (4, 2),
-            (6, 3),
-            (8, 4),
-            (8, 4, 2),
-            (12, 6),
-        ],
-        "lr": [1e-3, 5e-4, 1e-4],
-        "weight_decay": [0.0, 1e-5, 1e-4],
-        "batch_size": [64, 128, 256],
-        "n_ep": [200],
-        "sigma_init": [0.40, SIGMA_INIT, 0.80],
-        "kappa_init": [0.15, KAPPA_INIT, 0.50],
-        "xi_init": [0.15, 0.20, XI_INIT],
-        "censor_threshold": [0.22, 0.40],
-        "init_source": ["default", "gam"],
-    }
-
-elif TUNING_PRESET == "large":
-    nn_param_grid = {
+nn_param_grid = {
         "variant": ["both"],
         "x_set_name": ["radar_time_space"],
         "widths": [
-            (4, 2),
+            # (4, 2),
             (6, 3),
             (8, 4),
             (12, 6),
             (8, 4, 2),
-            (12, 6, 3),
-            (16, 8, 4),
+            # (12, 6, 3),
+            # (16, 8, 4),
         ],
         "lr": [1e-3],
         "weight_decay": [0.0],
         "batch_size": [128],
         "n_ep": [100],
-        "sigma_init": [0.40, SIGMA_INIT, 0.70],
-        "kappa_init": [0.15, KAPPA_INIT, 0.50],
-        "xi_init": [0.10, 0.15, 0.20, 0.24, 0.30, 0.35, 0.40, 0.50],
+        "sigma_init": [SIGMA_INIT],
+        "kappa_init": [KAPPA_INIT],
+        "xi_init": [0.20, XI_INIT, 0.30],
         "censor_threshold": [0.22, 0.40],
-        "init_source": ["default", "gam"],
-    }
-
-else:
-    raise ValueError("TUNING_PRESET must be one of: small, medium, large.")
+        "init_source": ["default"], #, "gam"
+}
 
 # %%
 #  NN tuning on one outer split
@@ -389,73 +328,7 @@ fig.savefig(
     bbox_inches="tight",
 )
 
-# %%
-fig, ax = plt.subplots(figsize=(12, 5))
 
-ax.bar(
-    plot_top["config_rank"],
-    plot_top["gap_valid_train"],
-)
-
-ax.axhline(0, color="black", linewidth=0.8)
-ax.set_xlabel(f"Top {TOP_K_PLOT} configurations")
-ax.set_ylabel("Validation NLL - Train NLL")
-ax.set_title("Generalization gap for top NN configurations")
-ax.grid(True, axis="y", alpha=0.3)
-
-plt.tight_layout()
-plt.show()
-
-fig.savefig(
-    IM_FOLDER / "nn_tuning_nll_gap_top_configs.png",
-    dpi=300,
-    bbox_inches="tight",
-)
-
-# %%
-# Barplot with hyperparameter labels
-
-plot_top["label"] = (
-    plot_top["x_set_name"].astype(str)
-    + "\n" + plot_top["variant"].astype(str)
-    + "\n" + plot_top["widths"].astype(str)
-    + "\nxi=" + plot_top["xi_init"].astype(str)
-)
-
-fig, ax = plt.subplots(figsize=(15, 6))
-
-x = np.arange(len(plot_top))
-width = 0.35
-
-ax.bar(
-    x - width / 2,
-    plot_top["train_loss"],
-    width,
-    label="Train NLL",
-)
-
-ax.bar(
-    x + width / 2,
-    plot_top["valid_loss"],
-    width,
-    label="Validation NLL",
-)
-
-ax.set_xticks(x)
-ax.set_xticklabels(plot_top["label"], rotation=45, ha="right")
-ax.set_ylabel("Negative log-likelihood")
-ax.set_title(f"Likelihood comparison for top {TOP_K_PLOT} NN configurations")
-ax.grid(True, axis="y", alpha=0.3)
-ax.legend()
-
-plt.tight_layout()
-plt.show()
-
-fig.savefig(
-    IM_FOLDER / "nn_tuning_nll_barplot_top_configs.png",
-    dpi=300,
-    bbox_inches="tight",
-)
 
 # %%
 # Rerank top NN configs using tail-informative metrics/scores
@@ -483,10 +356,19 @@ print(
 )
 
 #%%
+fig, ax = plt.subplots(figsize=(6, 6))
+
+ax.scatter(tuning_df["train_loss"], tuning_df["valid_loss"], alpha=0.7)
+
+ax.set_xlabel("Train NLL")
+ax.set_ylabel("Validation NLL")
+ax.set_title("Train vs validation NLL across NN configs")
+ax.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
 # %%
-# ============================================================
 # Plots after reranking: likelihoods and scores
-# ============================================================
 
 plot_rerank = rerank_df.copy().reset_index(drop=True)
 
@@ -724,9 +606,7 @@ cols_top = [c for c in cols_top if c in top_nn_configs.columns]
 print(top_nn_configs[cols_top].to_string(index=False))
 
 # %%
-# ============================================================
-# 7. Evaluate several best NN configs on train_valid and test
-# ============================================================
+# Evaluate several best NN configs on train_valid and test
 
 nn_train_rows = []
 nn_test_rows = []

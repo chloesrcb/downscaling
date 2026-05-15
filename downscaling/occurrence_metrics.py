@@ -234,3 +234,20 @@ def plot_validation_summary(y_true, p_pred, title_prefix="", filename=None):
     plt.show()
 
     return rel, roc
+
+def plot_roc_curve(y_true, p_pred, title="", filename=None):
+    roc = roc_curve_manual(y_true, p_pred)
+    auc = auc_manual(y_true, p_pred)
+
+    plt.figure(figsize=(6, 6))
+    plt.plot(roc["fpr"], roc["tpr"], label=f"AUC = {auc:.3f}")
+    plt.plot([0, 1], [0, 1], "--", color="black", linewidth=1)
+    plt.xlabel("False positive rate", fontsize=14)
+    plt.ylabel("True positive rate", fontsize=14)
+    # plt.title(title, fontsize=14)
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+
+    if filename is not None:
+        plt.savefig(filename, dpi=300, bbox_inches="tight")
+    plt.show()

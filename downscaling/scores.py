@@ -94,8 +94,6 @@ def crps_integrated_egpd(y: np.ndarray,
                     ) -> dict:
     """
     Compute the CRPS of the EGPD distribution by integrating over thresholds.
-     CRPS = \int (F(u) - I(y <= u))^2 w(u) du
-     where F is the EGPD CDF and w(u) are optional weights.
      """
     y = np.asarray(y, dtype=float).reshape(-1)
     sigma = np.asarray(sigma, dtype=float).reshape(-1)
@@ -245,6 +243,7 @@ def summarize_crps_metrics(
     kappa: np.ndarray,
     xi: np.ndarray,
     thresholds: Optional[np.ndarray] = None,
+    twcrps_alpha: float = 1.0,
 ) -> dict:
     y = np.asarray(y, dtype=float)
     y_pos = y[np.isfinite(y) & (y > 0)]
@@ -281,7 +280,7 @@ def summarize_crps_metrics(
     tw_weights = twcrps_weight_rain_power(
         thresholds=tw_thresholds,
         u0=u0,
-        alpha=1.0,
+        alpha=twcrps_alpha,
         normalize=True,
     )
 
@@ -294,16 +293,16 @@ def summarize_crps_metrics(
         weights=tw_weights,
     )
 
-    out["twcrps_paper_sum"] = tw_discrete["twcrps_discrete_sum"]
-    out["twcrps_paper_mean_obs"] = tw_discrete["twcrps_discrete_mean_obs"]
-    out["twcrps_paper_mean_obs_thr"] = tw_discrete["twcrps_discrete_mean_obs_thr"]
+    out["twcrps_sum"] = tw_discrete["twcrps_discrete_sum"]
+    out["twcrps_mean_obs"] = tw_discrete["twcrps_discrete_mean_obs"]
+    out["twcrps_mean_obs_thr"] = tw_discrete["twcrps_discrete_mean_obs_thr"]
 
     out["twcrps_threshold_q95"] = u0
     out["twcrps_n_thresholds"] = int(len(tw_thresholds))
     out["twcrps_threshold_min"] = float(np.min(tw_thresholds))
     out["twcrps_threshold_max"] = float(np.max(tw_thresholds))
 
-    out["twcrps_mean"] = out["twcrps_paper_sum"]
+    out["twcrps_mean"] = out["twcrps_sum"] / len(tw_thresholds) if len(tw_thresholds) > 0 else np.nan
 
     return out
 

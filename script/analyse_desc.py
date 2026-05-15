@@ -33,7 +33,6 @@ from downscaling.paths import make_output_dirs
 
 make_output_dirs()
 
-#%%
 # %%
 df_raw = pd.read_csv(DOWNSCALING_TABLE, sep=";")
 df_raw["time"] = pd.to_datetime(df_raw["time"], utc=True)

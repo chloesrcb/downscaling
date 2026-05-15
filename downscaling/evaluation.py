@@ -18,6 +18,7 @@ from downscaling.scores import (
     summarize_distribution_metrics,
 )
 from downscaling.stationary import fit_egpd_stationary_direct
+from downscaling.nn import run_one_nn_variant
 
 def evaluate_nn_config_on_split(
     df_model: pd.DataFrame,
@@ -87,9 +88,9 @@ def evaluate_nn_config_on_split(
         "crps_mean": metrics["crps_mean"],
         "crps_sum": metrics["crps_sum"],
         "twcrps_mean": metrics["twcrps_mean"],
-        "twcrps_paper_sum": metrics["twcrps_paper_sum"],
-        "twcrps_paper_mean_obs": metrics["twcrps_paper_mean_obs"],
-        "twcrps_paper_mean_obs_thr": metrics["twcrps_paper_mean_obs_thr"],
+        "twcrps_sum": metrics["twcrps_sum"],
+        "twcrps_mean_obs": metrics["twcrps_mean_obs"],
+        "twcrps_mean_obs_thr": metrics["twcrps_mean_obs_thr"],
         "smad": metrics["smad"],
         "smad_m": metrics["smad_m"],
         "err95": metrics["abs_calib_err_0.95"],

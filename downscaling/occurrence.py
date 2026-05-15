@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 
 from downscaling.config import TIME_COLS, SPATIAL_COLS
 from downscaling.data import get_x_cols27_downscaling
+from downscaling.occurrence_metrics import sigmoid_np
 
 # Build X and y for occurrence
 # y = 1 if rain is observed, 0 otherwise

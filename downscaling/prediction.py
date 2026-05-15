@@ -24,6 +24,7 @@ from downscaling.regression import (
 from downscaling.scores import make_prediction_df, make_test_metric_row
 from downscaling.splits import make_single_split_from_train
 from downscaling.stationary import fit_egpd_stationary_direct
+from downscaling.nn import run_one_nn_variant
 
 @torch.no_grad()
 def predict_params(model, X_s=None, X_k=None, offset=None, device=None):

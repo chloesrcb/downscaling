@@ -23,6 +23,7 @@ def tune_nn_on_outer_train(
     param_grid: dict,
     seed: int = 1,
     device: Optional[str] = None,
+    single_cov_col: Optional[str] = None,
 ):
     df_outer_train = df_model.loc[outer_split["train_idx"]].copy()
 
@@ -226,7 +227,7 @@ def rerank_top_nn_configs(
             f"init={params.get('init_source', 'unknown'):8s} | "
             f"variant={params['variant']:10s} | "
             f"valid_loss={res['valid_loss']:.4f} | "
-            f"twCRPS_sum={res['twcrps_paper_sum']:.4f} | "
+            f"twCRPS_sum={res['twcrps_sum']:.4f} | "
             f"sMAD={res['smad']:.4f} | "
             f"CRPS={res['crps_mean']:.4f} | "
             f"err95={res['err95']:.4f} | "
@@ -236,7 +237,7 @@ def rerank_top_nn_configs(
     rerank_df = pd.DataFrame(rows)
 
     rerank_df["rank_valid_loss"] = rerank_df["valid_loss"].rank(method="average")
-    rerank_df["rank_twcrps"] = rerank_df["twcrps_paper_sum"].rank(method="average")
+    rerank_df["rank_twcrps"] = rerank_df["twcrps_sum"].rank(method="average")
     rerank_df["rank_smad"] = rerank_df["smad"].rank(method="average")
     rerank_df["rank_crps"] = rerank_df["crps_mean"].rank(method="average")
     rerank_df["rank_err95"] = rerank_df["err95"].rank(method="average")
@@ -245,7 +246,7 @@ def rerank_top_nn_configs(
     rerank_df = rerank_df.sort_values(
         [
             "valid_loss",
-            "twcrps_paper_sum",
+            "twcrps_sum",
             "crps_mean",
             "smad",
         ]
