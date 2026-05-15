@@ -99,7 +99,6 @@ def evaluate_nn_config_on_split(
 
     return out
 
-
 def evaluate_nn_config_on_split_fast(
     df_model: pd.DataFrame,
     split: Dict[str, Any],
@@ -116,6 +115,7 @@ def evaluate_nn_config_on_split_fast(
     seed: int = 1,
     device: Optional[str] = None,
     weight_decay: float = 0.0,
+    return_history: bool = False,
 ):
     fit, meta = run_one_nn_variant(
         df_model=df_model,
@@ -138,11 +138,16 @@ def evaluate_nn_config_on_split_fast(
         weight_decay=weight_decay,
     )
 
-    return {
+    res = {
         "valid_loss": float(fit.get("val_nll", np.nan)),
         "train_loss": float(fit["train_nll"]),
         "stopped_epoch": int(fit.get("stopped_epoch", n_ep)),
     }
+
+    if return_history:
+        res["history"] = fit.get("history", None)
+
+    return res
 
 
 

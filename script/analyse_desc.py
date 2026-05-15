@@ -54,6 +54,7 @@ df_pos.to_csv(os.path.join(TAB_DIR, "prepared_positive_with_radar.csv"), index=F
 
 save_summary_tables(df_all, df_pos, x_cols_all)
 
+#%%
 summary, corrs_df, monthly_occ, hourly_occ, station_occ = save_summary_tables(
     df_all, df_pos, x_cols_all
 )
@@ -61,23 +62,27 @@ summary, corrs_df, monthly_occ, hourly_occ, station_occ = save_summary_tables(
 occ_def_comparison = save_occurrence_definition_comparison(df_all)
 save_occurrence_latex_table(df_all)
 
-print("\n=== Radar occurrence definition comparison ===")
+#%%
 print(occ_def_comparison.to_string(index=False))
 
 fig_occurrence_contingency(df_all)
 fig_occurrence_rates_by_month_hour(df_all)
 
+#%%
 # Figures on positive rainfall intensities.
 fig_positive_rainfall_distribution(df_pos)
 fig_survival_positive_rainfall(df_pos)
 fig_tipping_bucket_discretization(df_pos)
 
+#%%
 # Radar-gauge relationship.
 fig_top_correlations(df_pos, x_cols_all)
 fig_lag_correlations(df_pos, x_cols27)
 fig_scatter_radar_gauge(df_pos, predictor="radar_max")
 
-# Also plot the most correlated radar covariate if available.
+
+#%%
+# Most correlated radar covariate
 corrs = (
     df_pos[["Y_obs"] + x_cols_all]
     .corr(numeric_only=True)["Y_obs"]
@@ -87,14 +92,17 @@ corrs = (
 best_cov = corrs.index[0]
 fig_scatter_radar_gauge(df_pos, predictor=best_cov)
 
+#%%
 # Conditional distributions.
 fig_conditional_distribution_by_radar(df_pos)
 fig_conditional_quantiles_by_radar(df_pos)
 
+#%%
 # Temporal and spatial summaries.
 fig_temporal_intensity_patterns(df_pos)
 fig_station_spatial_patterns(df_all)
 
+#%%
 # Example event days.
 fig_example_events(df_all, n_events=3)
 # %%

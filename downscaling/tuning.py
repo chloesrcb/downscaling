@@ -2,6 +2,7 @@ from itertools import product
 from typing import Any, Dict, Optional
 
 import pandas as pd
+import numpy as np
 
 from downscaling.config import SIGMA_INIT, KAPPA_INIT
 from downscaling.splits import make_single_split_from_train
@@ -13,8 +14,6 @@ from downscaling.evaluation import (
 from downscaling.regression import get_gam_initial_values
 from downscaling.scores import summarize_distribution_metrics, smad_exponential_margins
 from downscaling.egpd import egpd_left_censored_nll_sum
-
-
 
 def tune_nn_on_outer_train(
     df_model: pd.DataFrame,
@@ -35,6 +34,7 @@ def tune_nn_on_outer_train(
     )
 
     rows = []
+    histories = {}
 
     common_keys = [
         "variant",
@@ -50,6 +50,7 @@ def tune_nn_on_outer_train(
     ]
 
     common_values = [param_grid[k] for k in common_keys]
+    config_id = 0
 
     for vals in product(*common_values):
         params = dict(zip(common_keys, vals))
@@ -62,6 +63,9 @@ def tune_nn_on_outer_train(
             raise ValueError(f"Unknown x_set_name: {x_set_name}")
 
         x_cols = x_sets[x_set_name]
+
+        xi_init_requested = float(params["xi_init"])
+        xi_init_effective = xi_init_requested
 
         if variant == "both":
             sigma_candidates = param_grid["sigma_init"]
@@ -86,7 +90,7 @@ def tune_nn_on_outer_train(
                     df_train=df_outer_train.loc[inner_split["train_idx"]],
                     covariate_col=single_cov_col,
                     variant=variant,
-                    xi_fixed=float(params["xi_init"]),
+                    xi_fixed=xi_init_requested,
                     sigma_init=SIGMA_INIT,
                     kappa_init=KAPPA_INIT,
                     censor_threshold=float(params["censor_threshold"]),
@@ -95,22 +99,41 @@ def tune_nn_on_outer_train(
                 sigma_candidates = [gam_init["sigma_init_gam"]]
                 kappa_candidates = [gam_init["kappa_init_gam"]]
 
+                if "xi_init_gam" in gam_init:
+                    xi_init_effective = float(gam_init["xi_init_gam"])
+                elif "xi_hat" in gam_init:
+                    xi_init_effective = float(gam_init["xi_hat"])
+                elif "xi_fixed" in gam_init:
+                    xi_init_effective = float(gam_init["xi_fixed"])
+                else:
+                    xi_init_effective = xi_init_requested
+
             except Exception as e:
                 print(f"GAM init failed for {params}: {e}")
                 continue
 
         for sigma_init, kappa_init in product(sigma_candidates, kappa_candidates):
+            config_id += 1
+
             params_variant = params.copy()
 
+            params_variant["config_id"] = config_id
             params_variant["sigma_init"] = float(sigma_init)
             params_variant["kappa_init"] = float(kappa_init)
+            params_variant["xi_init_requested"] = xi_init_requested
+            params_variant["xi_init_effective"] = xi_init_effective
+            params_variant["xi_init"] = xi_init_effective
             params_variant["n_covariates"] = len(x_cols)
 
             if gam_init is not None:
                 params_variant.update(gam_init)
 
             cfg = Config(
-                name=f"nn_{x_set_name}_{variant}_{params_variant['widths']}_{init_source}",
+                name=(
+                    f"nn_{config_id}_{x_set_name}_{variant}_"
+                    f"{params_variant['widths']}_{init_source}_"
+                    f"xi{xi_init_effective}"
+                ),
                 widths=parse_widths(params_variant["widths"]),
             )
 
@@ -122,7 +145,7 @@ def tune_nn_on_outer_train(
                 variant=params_variant["variant"],
                 sigma_init=float(params_variant["sigma_init"]),
                 kappa_init=float(params_variant["kappa_init"]),
-                xi_init=float(params_variant["xi_init"]),
+                xi_init=float(params_variant["xi_init_effective"]),
                 batch_size=int(params_variant["batch_size"]),
                 censor_threshold=float(params_variant["censor_threshold"]),
                 lr=float(params_variant["lr"]),
@@ -130,18 +153,28 @@ def tune_nn_on_outer_train(
                 seed=seed,
                 device=device,
                 weight_decay=float(params_variant["weight_decay"]),
+                return_history=True,
             )
 
+            history = res.get("history", None)
+
+            if history is not None:
+                histories[config_id] = history
+
             row = params_variant.copy()
-            row.update(res)
+            row.update({k: v for k, v in res.items() if k != "history"})
             rows.append(row)
 
             print(
-                f"tested x_set={x_set_name:18s} | "
+                f"tested config_id={config_id:03d} | "
+                f"x_set={x_set_name:18s} | "
                 f"init={init_source:8s} | "
                 f"variant={variant:10s} | "
                 f"widths={params_variant['widths']} | "
                 f"n_cov={len(x_cols):2d} | "
+                f"xi_requested={xi_init_requested:.4f} | "
+                f"xi_effective={xi_init_effective:.4f} | "
+                f"censor={float(params_variant['censor_threshold']):.3f} | "
                 f"valid_loss={res['valid_loss']:.4f} | "
                 f"train_loss={res['train_loss']:.4f} | "
                 f"stopped_epoch={res['stopped_epoch']}"
@@ -162,9 +195,10 @@ def tune_nn_on_outer_train(
     ).reset_index(drop=True)
 
     best_params = tuning_df.iloc[0].to_dict()
+    best_config_id = int(best_params["config_id"])
+    best_history = histories.get(best_config_id, None)
 
-    return tuning_df, best_params
-
+    return tuning_df, best_params, best_history
 
 
 def rerank_top_nn_configs(
@@ -186,17 +220,18 @@ def rerank_top_nn_configs(
     )
 
     rows = []
+    histories = {}
 
     top_configs = tuning_df.head(top_k).copy()
 
-    for _, params in top_configs.iterrows():
+    for rerank_id, (_, params) in enumerate(top_configs.iterrows(), start=1):
         params = params.to_dict()
 
         x_set_name = params["x_set_name"]
         x_cols = x_sets[x_set_name]
 
         cfg = Config(
-            name=f"nn_rerank_{x_set_name}_{params['variant']}_{params['widths']}",
+            name=f"nn_rerank_{rerank_id}_{x_set_name}_{params['variant']}_{params['widths']}",
             widths=parse_widths(params["widths"]),
         )
 
@@ -216,14 +251,22 @@ def rerank_top_nn_configs(
             seed=seed,
             device=device,
             weight_decay=float(params.get("weight_decay", 0.0)),
+            return_history=True,
         )
 
+        history = res.get("history", None)
+
+        if history is not None:
+            histories[rerank_id] = history
+
         row = params.copy()
-        row.update(res)
+        row["rerank_id"] = rerank_id
+        row.update({k: v for k, v in res.items() if k != "history"})
         rows.append(row)
 
         print(
-            f"reranked x_set={x_set_name:18s} | "
+            f"reranked rerank_id={rerank_id:03d} | "
+            f"x_set={x_set_name:18s} | "
             f"init={params.get('init_source', 'unknown'):8s} | "
             f"variant={params['variant']:10s} | "
             f"valid_loss={res['valid_loss']:.4f} | "
@@ -245,13 +288,15 @@ def rerank_top_nn_configs(
 
     rerank_df = rerank_df.sort_values(
         [
-            "valid_loss",
             "twcrps_sum",
+            "valid_loss",
             "crps_mean",
             "smad",
         ]
     ).reset_index(drop=True)
 
     best_params = rerank_df.iloc[0].to_dict()
+    best_rerank_id = int(best_params["rerank_id"])
+    best_history = histories.get(best_rerank_id, None)
 
-    return rerank_df, best_params
+    return rerank_df, best_params, best_history

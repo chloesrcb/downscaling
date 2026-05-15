@@ -222,7 +222,7 @@ def fit_predict_nn_test(
     final_split = make_single_split_from_train(
         df_train=df_train_valid,
         train_frac=0.90,
-        block="30D",
+        block="7D",
         seed=seed,
     )
 
@@ -317,4 +317,4 @@ def fit_predict_nn_test(
         xi_t=xi_t,
     )
 
-    return row, pred
+    return row, pred, fit

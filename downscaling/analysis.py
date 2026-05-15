@@ -824,7 +824,7 @@ def fig_station_spatial_patterns(df_all: pd.DataFrame):
 def fig_example_events(df_all: pd.DataFrame, n_events: int = 3):
     """
     Select a few intense days and plot gauge rainfall and radar summaries.
-    This is useful to visually illustrate timing and intensity discrepancies.
+    Radar hourly rainfall is divided by 12 to express it as a 5-min equivalent.
     """
     d = df_all.copy()
     d["date"] = d["time"].dt.floor("D")
@@ -840,14 +840,13 @@ def fig_example_events(df_all: pd.DataFrame, n_events: int = 3):
         .head(n_events)
         .reset_index()
     )
+
     daily.to_csv(os.path.join(TAB_DIR, "selected_example_event_days.csv"), index=False)
 
     for i, row in daily.iterrows():
         day = row["date"]
-        mask = d["date"] == day
-        sub = d.loc[mask].sort_values("time")
+        sub = d.loc[d["date"] == day].sort_values("time")
 
-        # Average over stations at each time for a compact event-level display.
         ts = (
             sub.groupby("time")
             .agg(
@@ -859,15 +858,31 @@ def fig_example_events(df_all: pd.DataFrame, n_events: int = 3):
             .reset_index()
         )
 
+        ts["radar_max_5min"] = ts["radar_max"] / 12.0
+        ts["radar_mean_5min"] = ts["radar_mean"] / 12.0
+
         fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(ts["time"], ts["gauge_mean"], label="Gauge mean")
-        ax.plot(ts["time"], ts["gauge_max"], label="Gauge max")
-        ax.plot(ts["time"], ts["radar_max"], label="Radar maximum, mean over stations")
-        ax.plot(ts["time"], ts["radar_mean"], label="Radar mean, mean over stations")
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Rainfall")
+
+        ax.plot(ts["time"], ts["gauge_mean"], label="Gauge mean", color="red")
+        ax.plot(ts["time"], ts["gauge_max"], label="Gauge max", color="red", alpha=0.5, linestyle="--")
+        ax.plot(
+            ts["time"],
+            ts["radar_max_5min"],
+            label="Radar maximum, mean over stations",
+            color="teal", alpha=0.5, linestyle="--"
+        )
+        ax.plot(
+            ts["time"],
+            ts["radar_mean_5min"],
+            label="Radar mean, mean over stations",
+            color="teal"
+        )
+
+        ax.set_xlabel("Time", size=14)
+        ax.set_ylabel("Rainfall amount (mm / 5 min)", size=14)
         ax.legend()
         add_grid(ax)
+
         plt.tight_layout()
-        savefig(fig, f"21_example_event_{i+1}_{pd.Timestamp(day).date()}")
+        savefig(fig, f"example_event_{i + 1}_{pd.Timestamp(day).date()}")
         plt.close(fig)
