@@ -10,4 +10,4 @@ provided by COMEPHORE and the local in situ precipitation observations from OMSE
 
 More specifically, this project focuses on the statistical modeling of precipitation, with particular attention to extremes. 
 
-![Downscaling scheme](images/dwscl_schema.png)
+<img src="images/dwscl_schema.svg" width="700">
