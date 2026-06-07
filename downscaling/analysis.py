@@ -1,6 +1,5 @@
 
 import os
-import re
 from pathlib import Path
 from typing import Optional
 
@@ -11,55 +10,31 @@ import matplotlib.pyplot as plt
 from downscaling.paths import FIG_DIR, TAB_DIR
 from downscaling.config import RAIN_THRESHOLD_POSITIVE, BUCKET_RESOLUTION, TIME_COLS, SPATIAL_COLS
 from downscaling.data import get_x_cols27_downscaling
+from downscaling.plotting import (
+    LOG_RESPONSE_LABEL,
+    PLOT_DPI,
+    POSITIVE_RESPONSE_LABEL,
+    RESPONSE_LABEL,
+    configure_plot_style,
+    pretty_predictor_name,
+    save_png,
+)
 
 
-def savefig(fig, name: str, dpi: int = 300):
-    """Save one figure as PNG and PDF."""
+configure_plot_style()
+
+
+def savefig(fig, name: str, dpi: int = PLOT_DPI):
+    """Save one figure as a transparent, compressed PNG."""
     png_path = os.path.join(FIG_DIR, f"{name}.png")
-    pdf_path = os.path.join(FIG_DIR, f"{name}.pdf")
-    fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
-    fig.savefig(pdf_path, bbox_inches="tight")
+    save_png(fig, png_path, dpi=dpi)
     print(f"Saved: {png_path}")
-    print(f"Saved: {pdf_path}")
 
 
 
 def pretty_covariate_name(name: str) -> str:
     """Convert technical covariate names into readable labels for plots."""
-    m = re.match(r"^X_p(\d{2})_dt(-1h|0h|\+1h)$", name)
-    if m is not None:
-        pixel = int(m.group(1))
-        lag = m.group(2)
-
-        if lag == "0h":
-            lag_label = "t"
-        elif lag == "-1h":
-            lag_label = "t - 1 h"
-        elif lag == "+1h":
-            lag_label = "t + 1 h"
-        else:
-            lag_label = lag
-
-        return f"Radar grid cell {pixel}, {lag_label}"
-
-    replacements = {
-        "radar_max": "Radar maximum",
-        "radar_mean": "Radar mean",
-        "radar_sum": "Radar sum",
-        "tod_sin": "Time of day, sine",
-        "tod_cos": "Time of day, cosine",
-        "doy_sin": "Day of year, sine",
-        "doy_cos": "Day of year, cosine",
-        "month_sin": "Month, sine",
-        "month_cos": "Month, cosine",
-        "lat_Y": "Gauge latitude",
-        "lon_Y": "Gauge longitude",
-        "lat_X": "Radar cell latitude",
-        "lon_X": "Radar cell longitude",
-        "Y_obs": r"Gauge rainfall $Y_{obs}$",
-    }
-
-    return replacements.get(name, name)
+    return pretty_predictor_name(name)
 
 
 
@@ -412,23 +387,23 @@ def save_occurrence_latex_table(df_all: pd.DataFrame):
     latex = rf"""
 \begin{{table}}[H]
 \centering
-\caption{{Joint occurrence of rainfall in rain gauges and radar data. Values are proportions of all raw observations, before filtering positive rainfall intensities.}}
+\caption{{Joint occurrence of local rainfall \(X_{{\mathbf{{s}},t}}\) and COMEPHORE predictor-cube rainfall. Values are proportions of all raw observations, before filtering positive rainfall intensities.}}
 \label{{tab:radar-gauge-occurrence-raw}}
 \begin{{threeparttable}}
 \begin{{tabular}}{{lcc}}
 \toprule
- & \multicolumn{{2}}{{c}}{{Radar occurrence}} \\
+ & \multicolumn{{2}}{{c}}{{Predictor-cube occurrence}} \\
 \cmidrule(lr){{2-3}}
-Gauge occurrence & Radar dry & Radar wet \\
+Local occurrence & \(\mathbf{{C}}_{{\mathbf{{s}},t}}\) dry & \(\mathbf{{C}}_{{\mathbf{{s}},t}}\) wet \\
 \midrule
-Gauge dry & {p00:.3f} & {p01:.3f} \\
-Gauge wet & {p10:.3f} & {p11:.3f} \\
+\(X_{{\mathbf{{s}},t}}\) dry & {p00:.3f} & {p01:.3f} \\
+\(X_{{\mathbf{{s}},t}}\) wet & {p10:.3f} & {p11:.3f} \\
 \bottomrule
 \end{{tabular}}
 \begin{{tablenotes}}
 \small
-\item The rain gauge is considered wet when \(Y_{{\mathrm{{obs}}}}>0\). 
-The radar is considered wet when at least one associated COMEPHORE predictor is positive. 
+\item The local rainfall response is considered wet when \(X_{{\mathbf{{s}},t}}>0\). 
+The predictor cube is considered wet when at least one associated COMEPHORE predictor is positive. 
 The table is computed before filtering observations for the positive-intensity EGPD model.
 \end{{tablenotes}}
 \end{{threeparttable}}
@@ -458,10 +433,10 @@ def fig_occurrence_contingency(df_all: pd.DataFrame):
 
     ax.set_xticks([0, 1])
     ax.set_yticks([0, 1])
-    ax.set_xticklabels(["Radar dry", "Radar wet"])
-    ax.set_yticklabels(["Gauge dry", "Gauge wet"])
-    ax.set_xlabel("Radar occurrence")
-    ax.set_ylabel("Gauge occurrence")
+    ax.set_xticklabels([r"$\mathbf{C}_{\mathbf{s},t}$ dry", r"$\mathbf{C}_{\mathbf{s},t}$ wet"])
+    ax.set_yticklabels([r"$X_{\mathbf{s},t}$ dry", r"$X_{\mathbf{s},t}$ wet"])
+    ax.set_xlabel(r"Predictor-cube occurrence")
+    ax.set_ylabel(r"Local rainfall occurrence")
 
     for i in range(2):
         for j in range(2):
@@ -484,9 +459,9 @@ def fig_occurrence_rates_by_month_hour(df_all: pd.DataFrame):
     )
 
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(monthly["month"], monthly["gauge_occurrence_rate"], marker="o", label="Gauge wet")
-    ax.plot(monthly["month"], monthly["radar_occurrence_rate"], marker="o", label="Radar wet")
-    ax.plot(monthly["month"], monthly["joint_occurrence_rate"], marker="o", label="Gauge and radar wet")
+    ax.plot(monthly["month"], monthly["gauge_occurrence_rate"], marker="o", label=r"$X_{\mathbf{s},t}$ wet")
+    ax.plot(monthly["month"], monthly["radar_occurrence_rate"], marker="o", label=r"$\mathbf{C}_{\mathbf{s},t}$ wet")
+    ax.plot(monthly["month"], monthly["joint_occurrence_rate"], marker="o", label="Both wet")
     ax.set_xlabel("Month")
     ax.set_ylabel("Occurrence rate")
     ax.legend()
@@ -506,9 +481,9 @@ def fig_occurrence_rates_by_month_hour(df_all: pd.DataFrame):
     )
 
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(hourly["hour"], hourly["gauge_occurrence_rate"], marker="o", label="Gauge wet")
-    ax.plot(hourly["hour"], hourly["radar_occurrence_rate"], marker="o", label="Radar wet")
-    ax.plot(hourly["hour"], hourly["joint_occurrence_rate"], marker="o", label="Gauge and radar wet")
+    ax.plot(hourly["hour"], hourly["gauge_occurrence_rate"], marker="o", label=r"$X_{\mathbf{s},t}$ wet")
+    ax.plot(hourly["hour"], hourly["radar_occurrence_rate"], marker="o", label=r"$\mathbf{C}_{\mathbf{s},t}$ wet")
+    ax.plot(hourly["hour"], hourly["joint_occurrence_rate"], marker="o", label="Both wet")
     ax.set_xlabel("Hour of day")
     ax.set_ylabel("Occurrence rate")
     ax.legend()
@@ -523,7 +498,7 @@ def fig_positive_rainfall_distribution(df_pos: pd.DataFrame):
 
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.hist(y, bins=80, density=True, alpha=0.75)
-    ax.set_xlabel(r"Positive gauge rainfall $Y_{obs}$")
+    ax.set_xlabel(POSITIVE_RESPONSE_LABEL)
     ax.set_ylabel("Density")
     add_grid(ax)
     plt.tight_layout()
@@ -532,7 +507,7 @@ def fig_positive_rainfall_distribution(df_pos: pd.DataFrame):
 
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.hist(np.log1p(y), bins=80, density=True, alpha=0.75)
-    ax.set_xlabel(r"$\log(1 + Y_{obs})$")
+    ax.set_xlabel(LOG_RESPONSE_LABEL)
     ax.set_ylabel("Density")
     add_grid(ax)
     plt.tight_layout()
@@ -548,7 +523,7 @@ def fig_survival_positive_rainfall(df_pos: pd.DataFrame):
     fig, ax = plt.subplots(figsize=(6, 5))
     ax.step(y_sorted, surv, where="post")
     ax.set_yscale("log")
-    ax.set_xlabel(r"Positive gauge rainfall $Y_{obs}$")
+    ax.set_xlabel(POSITIVE_RESPONSE_LABEL)
     ax.set_ylabel("Empirical survival probability")
     add_grid(ax)
     plt.tight_layout()
@@ -566,7 +541,7 @@ def fig_survival_positive_rainfall(df_pos: pd.DataFrame):
         ax.axvline(qv, linestyle="--", alpha=0.7)
         ax.text(qv, 0.05, f"q{q:.3f}={qv:.2f}", rotation=90, va="bottom", ha="right")
 
-    ax.set_xlabel(r"Positive gauge rainfall $Y_{obs}$")
+    ax.set_xlabel(POSITIVE_RESPONSE_LABEL)
     ax.set_ylabel("Empirical survival probability")
     add_grid(ax)
     plt.tight_layout()
@@ -584,7 +559,7 @@ def fig_tipping_bucket_discretization(df_pos: pd.DataFrame):
     for k in range(1, 11):
         ax.axvline(k * BUCKET_RESOLUTION, linestyle="--", alpha=0.3)
 
-    ax.set_xlabel(r"Positive gauge rainfall $Y_{obs}$ up to 2 mm")
+    ax.set_xlabel(rf"{POSITIVE_RESPONSE_LABEL} up to 2 mm")
     ax.set_ylabel("Count")
     add_grid(ax)
     plt.tight_layout()
@@ -605,7 +580,7 @@ def fig_top_correlations(df_pos: pd.DataFrame, x_cols_all: list[str]):
 
     fig, ax = plt.subplots(figsize=(8, 5))
     top_corrs_plot.sort_values().plot(kind="barh", ax=ax)
-    ax.set_xlabel(r"Pearson correlation with $Y_{obs}$")
+    ax.set_xlabel(r"Pearson correlation with $X_{\mathbf{s},t}$")
     ax.set_ylabel("")
     add_grid(ax, axis="x")
     plt.tight_layout()
@@ -627,8 +602,8 @@ def fig_lag_correlations(df_pos: pd.DataFrame, x_cols27: list[str]):
 
     fig, ax = plt.subplots(figsize=(7, 4))
     lag_corrs.boxplot(column="corr", by="lag", ax=ax)
-    ax.set_xlabel("Radar temporal lag")
-    ax.set_ylabel(r"Pearson correlation with $Y_{obs}$")
+    ax.set_xlabel(r"COMEPHORE lag $\ell$")
+    ax.set_ylabel(r"Pearson correlation with $X_{\mathbf{s},t}$")
     plt.tight_layout()
     savefig(fig, "10_correlation_by_radar_lag")
     plt.close(fig)
@@ -645,7 +620,7 @@ def fig_scatter_radar_gauge(df_pos: pd.DataFrame, predictor: str = "radar_max"):
     fig, ax = plt.subplots(figsize=(6, 5))
     ax.scatter(x, y, s=6, alpha=0.2)
     ax.set_xlabel(label)
-    ax.set_ylabel(r"Gauge rainfall $Y_{obs}$")
+    ax.set_ylabel(RESPONSE_LABEL)
     add_grid(ax)
     plt.tight_layout()
     savefig(fig, f"11_scatter_y_vs_{predictor}")
@@ -654,7 +629,7 @@ def fig_scatter_radar_gauge(df_pos: pd.DataFrame, predictor: str = "radar_max"):
     fig, ax = plt.subplots(figsize=(6, 5))
     ax.scatter(np.log1p(x), np.log1p(y), s=6, alpha=0.2)
     ax.set_xlabel(f"log(1 + {label})")
-    ax.set_ylabel(r"$\log(1 + Y_{obs})$")
+    ax.set_ylabel(LOG_RESPONSE_LABEL)
     add_grid(ax)
     plt.tight_layout()
     savefig(fig, f"12_log_scatter_y_vs_{predictor}")
@@ -667,8 +642,8 @@ def fig_conditional_distribution_by_radar(df_pos: pd.DataFrame):
 
     fig, ax = plt.subplots(figsize=(10, 5))
     df_plot.boxplot(column="Y_obs", by="radar_bin", ax=ax, showfliers=False)
-    ax.set_xlabel("Radar maximum quantile bin")
-    ax.set_ylabel(r"Gauge rainfall $Y_{obs}$")
+    ax.set_xlabel(r"Quantile bin of $\max(\mathbf{C}^{\mathrm{cube}}_{\mathbf{s},t})$")
+    ax.set_ylabel(RESPONSE_LABEL)
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     savefig(fig, "13_boxplot_y_by_radar_bin")
@@ -678,8 +653,8 @@ def fig_conditional_distribution_by_radar(df_pos: pd.DataFrame):
 
     fig, ax = plt.subplots(figsize=(10, 5))
     df_plot.boxplot(column="log_Y_obs", by="radar_bin", ax=ax, showfliers=False)
-    ax.set_xlabel("Radar maximum quantile bin")
-    ax.set_ylabel(r"$\log(1 + Y_{obs})$")
+    ax.set_xlabel(r"Quantile bin of $\max(\mathbf{C}^{\mathrm{cube}}_{\mathbf{s},t})$")
+    ax.set_ylabel(LOG_RESPONSE_LABEL)
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     savefig(fig, "14_log_boxplot_y_by_radar_bin")
@@ -709,8 +684,8 @@ def fig_conditional_quantiles_by_radar(df_pos: pd.DataFrame):
     ax.plot(cond["radar_mid"], cond["y_q75"], marker="o", label="q75")
     ax.plot(cond["radar_mid"], cond["y_q90"], marker="o", label="q90")
     ax.plot(cond["radar_mid"], cond["y_q95"], marker="o", label="q95")
-    ax.set_xlabel("Median radar maximum in bin")
-    ax.set_ylabel(r"Conditional quantiles of $Y_{obs}$")
+    ax.set_xlabel(r"Median $\max(\mathbf{C}^{\mathrm{cube}}_{\mathbf{s},t})$ in bin")
+    ax.set_ylabel(r"Conditional quantiles of $X_{\mathbf{s},t}$")
     ax.legend()
     add_grid(ax)
     plt.tight_layout()
@@ -730,7 +705,7 @@ def fig_temporal_intensity_patterns(df_pos: pd.DataFrame):
     ax.plot(hourly.index, hourly["mean"], marker="o", label="mean")
     ax.plot(hourly.index, hourly["q95"], marker="o", label="q95")
     ax.set_xlabel("Hour of day")
-    ax.set_ylabel(r"Positive gauge rainfall $Y_{obs}$")
+    ax.set_ylabel(POSITIVE_RESPONSE_LABEL)
     ax.legend()
     add_grid(ax)
     plt.tight_layout()
@@ -748,7 +723,7 @@ def fig_temporal_intensity_patterns(df_pos: pd.DataFrame):
     ax.plot(monthly.index, monthly["mean"], marker="o", label="mean")
     ax.plot(monthly.index, monthly["q95"], marker="o", label="q95")
     ax.set_xlabel("Month")
-    ax.set_ylabel(r"Positive gauge rainfall $Y_{obs}$")
+    ax.set_ylabel(POSITIVE_RESPONSE_LABEL)
     ax.legend()
     add_grid(ax)
     plt.tight_layout()
@@ -782,7 +757,7 @@ def fig_station_spatial_patterns(df_all: pd.DataFrame):
         c=station_stats["mean_error"],
         s=80,
     )
-    plt.colorbar(sc, ax=ax, label=r"Mean error $Y_{obs}$ - radar maximum")
+    plt.colorbar(sc, ax=ax, label=r"Mean error $X_{\mathbf{s},t} - \max(\mathbf{C}^{\mathrm{cube}}_{\mathbf{s},t})$")
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
     add_grid(ax)
@@ -797,7 +772,7 @@ def fig_station_spatial_patterns(df_all: pd.DataFrame):
         c=station_stats["gauge_occurrence_rate"],
         s=80,
     )
-    plt.colorbar(sc, ax=ax, label="Gauge occurrence rate")
+    plt.colorbar(sc, ax=ax, label=r"Occurrence rate of $X_{\mathbf{s},t}$")
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
     add_grid(ax)
@@ -812,7 +787,7 @@ def fig_station_spatial_patterns(df_all: pd.DataFrame):
         c=station_stats["positive_mean"],
         s=80,
     )
-    plt.colorbar(sc, ax=ax, label=r"Mean positive $Y_{obs}$")
+    plt.colorbar(sc, ax=ax, label=r"Mean positive $X_{\mathbf{s},t}$")
     ax.set_xlabel("Longitude")
     ax.set_ylabel("Latitude")
     add_grid(ax)
@@ -863,23 +838,23 @@ def fig_example_events(df_all: pd.DataFrame, n_events: int = 3):
 
         fig, ax = plt.subplots(figsize=(10, 4))
 
-        ax.plot(ts["time"], ts["gauge_mean"], label="Gauge mean", color="red")
-        ax.plot(ts["time"], ts["gauge_max"], label="Gauge max", color="red", alpha=0.5, linestyle="--")
+        ax.plot(ts["time"], ts["gauge_mean"], label=r"Mean $X_{\mathbf{s},t}$", color="red")
+        ax.plot(ts["time"], ts["gauge_max"], label=r"Max $X_{\mathbf{s},t}$", color="red", alpha=0.5, linestyle="--")
         ax.plot(
             ts["time"],
             ts["radar_max_5min"],
-            label="Radar maximum, mean over stations",
+            label=r"Mean of $\max(\mathbf{C}^{\mathrm{cube}}_{\mathbf{s},t})$",
             color="teal", alpha=0.5, linestyle="--"
         )
         ax.plot(
             ts["time"],
             ts["radar_mean_5min"],
-            label="Radar mean, mean over stations",
+            label=r"Mean of $\mathrm{mean}(\mathbf{C}^{\mathrm{cube}}_{\mathbf{s},t})$",
             color="teal"
         )
 
         ax.set_xlabel("Time", size=14)
-        ax.set_ylabel("Rainfall amount (mm / 5 min)", size=14)
+        ax.set_ylabel(r"Rainfall amount (mm / 5 min)", size=14)
         ax.legend()
         add_grid(ax)
 

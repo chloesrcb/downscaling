@@ -3,6 +3,11 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from downscaling.plotting import PLOT_DPI, clean_figure, configure_plot_style, save_png
+
+
+configure_plot_style()
+
 # Numerical helpers for logistic predictions and metrics
 def sigmoid_np(z):
     z = np.clip(z, -50, 50)
@@ -202,9 +207,8 @@ def plot_validation_summary(y_true, p_pred, title_prefix="", filename=None):
     ax = axes[0]
     ax.plot([0, 1], [0, 1], "--", color="black", linewidth=1)
     ax.plot(rel["p_mean"], rel["obs_freq"], marker="o")
-    ax.set_xlabel("Mean predicted probability")
-    ax.set_ylabel("Observed rain frequency")
-    ax.set_title(f"{title_prefix} calibration")
+    ax.set_xlabel(r"Mean predicted $P(X_{\mathbf{s},t} > 0 \mid \mathbf{C}_{\mathbf{s},t})$")
+    ax.set_ylabel(r"Observed frequency of $X_{\mathbf{s},t} > 0$")
     ax.grid(True, alpha=0.3)
 
     # ROC panel
@@ -213,7 +217,6 @@ def plot_validation_summary(y_true, p_pred, title_prefix="", filename=None):
     ax.plot([0, 1], [0, 1], "--", color="black", linewidth=1)
     ax.set_xlabel("False positive rate")
     ax.set_ylabel("True positive rate")
-    ax.set_title(f"{title_prefix} ROC")
     ax.legend()
     ax.grid(True, alpha=0.3)
 
@@ -221,16 +224,16 @@ def plot_validation_summary(y_true, p_pred, title_prefix="", filename=None):
     ax = axes[2]
     ax.hist(p_pred[y_true == 0], bins=40, alpha=0.6, density=True, label="no rain")
     ax.hist(p_pred[y_true == 1], bins=40, alpha=0.6, density=True, label="rain")
-    ax.set_xlabel("Predicted probability")
+    ax.set_xlabel(r"Predicted $P(X_{\mathbf{s},t} > 0 \mid \mathbf{C}_{\mathbf{s},t})$")
     ax.set_ylabel("Density")
-    ax.set_title(f"{title_prefix} score distribution")
     ax.legend()
     ax.grid(True, alpha=0.3)
 
+    clean_figure(fig)
     plt.tight_layout()
 
     if filename is not None:
-        plt.savefig(filename, dpi=300, bbox_inches="tight")
+        save_png(fig, filename, dpi=PLOT_DPI)
     plt.show()
 
     return rel, roc
@@ -239,15 +242,15 @@ def plot_roc_curve(y_true, p_pred, title="", filename=None):
     roc = roc_curve_manual(y_true, p_pred)
     auc = auc_manual(y_true, p_pred)
 
-    plt.figure(figsize=(6, 6))
-    plt.plot(roc["fpr"], roc["tpr"], label=f"AUC = {auc:.3f}")
-    plt.plot([0, 1], [0, 1], "--", color="black", linewidth=1)
-    plt.xlabel("False positive rate", fontsize=14)
-    plt.ylabel("True positive rate", fontsize=14)
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.plot(roc["fpr"], roc["tpr"], label=f"AUC = {auc:.3f}")
+    ax.plot([0, 1], [0, 1], "--", color="black", linewidth=1)
+    ax.set_xlabel("False positive rate")
+    ax.set_ylabel("True positive rate")
     # plt.title(title, fontsize=14)
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
 
     if filename is not None:
-        plt.savefig(filename, dpi=300, bbox_inches="tight")
+        save_png(fig, filename, dpi=PLOT_DPI)
     plt.show()

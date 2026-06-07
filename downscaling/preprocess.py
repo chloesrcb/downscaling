@@ -75,62 +75,76 @@ def nearest_time_index_one(target_ns: int, com_ns: np.ndarray) -> int:
     pos0 = pos - 1
     return pos0 if abs(com_ns[pos0] - target_ns) <= abs(com_ns[pos] - target_ns) else pos
 
-# Station -> closest pixel + pixels within radius
 def build_station_radius_pixels(
     paths: Paths,
     rain_hsm: pd.DataFrame,
     radius_m: float = 1500.0,
 ) -> tuple[pd.DataFrame, pd.DataFrame, Dict[str, List[str]]]:
-    """
-    Logic:
-      - find closest pixel to gauge
-      - select all pixels within radius_m of that closest pixel (in meters)
-    Returns:
-      - location_gauges filtered to stations present in rain_hsm
-      - loc_px with projected coords
-      - station_pixels: station -> list of pixel_name (in loc_px file order)
-    """
+
     loc_px = pd.read_csv(paths.filename_loc_px)
-    loc_px.columns = ["pixel_name", "Longitude", "Latitude"]
+    loc_px.columns = ["pixel_name", "coord1", "coord2"]
 
     location_gauges = pd.read_csv(paths.filename_loc_gauges)
+
     if "station" not in location_gauges.columns:
         if "codestation" in location_gauges.columns:
             location_gauges["station"] = location_gauges["codestation"].astype(str)
         elif "Station" in location_gauges.columns:
             location_gauges["station"] = location_gauges["Station"].astype(str)
         else:
-            raise ValueError("No station id column found (station/codestation/Station).")
+            raise ValueError("No station id column found.")
 
     rain_stations = [c for c in rain_hsm.columns if c != "dates"]
-    location_gauges = location_gauges[location_gauges["station"].isin(rain_stations)].copy()
+    location_gauges = location_gauges[
+        location_gauges["station"].isin(rain_stations)
+    ].copy()
 
-    # project lon/lat to meters (Lambert-93)
-    transformer = Transformer.from_crs("EPSG:4326", "EPSG:2154", always_xy=True)
-    # already lambert
-    px_x, px_y = [loc_px["Longitude"].to_numpy(), loc_px["Latitude"].to_numpy()]
-    loc_px["X_m"] = px_x
-    loc_px["Y_m"] = px_y
+    to_l93 = Transformer.from_crs("EPSG:4326", "EPSG:2154", always_xy=True)
+    to_lonlat = Transformer.from_crs("EPSG:2154", "EPSG:4326", always_xy=True)
 
-    # transform in lambert
-    g_x, g_y = transformer.transform(location_gauges["Longitude"].to_numpy(), location_gauges["Latitude"].to_numpy())
+    c1 = loc_px["coord1"].to_numpy(float)
+    c2 = loc_px["coord2"].to_numpy(float)
+
+    # Detect CRS of pixel coordinates
+    # If values look like lon/lat around Montpellier
+    if (np.nanmedian(np.abs(c1)) < 20) and (np.nanmedian(np.abs(c2)) < 90):
+        loc_px["lon_X"] = c1
+        loc_px["lat_X"] = c2
+        px_x, px_y = to_l93.transform(c1, c2)
+        loc_px["X_m"] = px_x
+        loc_px["Y_m"] = px_y
+        print("Pixel coordinates detected as lon/lat.")
+
+    # If values look like Lambert-93 metres
+    else:
+        loc_px["X_m"] = c1
+        loc_px["Y_m"] = c2
+        lon, lat = to_lonlat.transform(c1, c2)
+        loc_px["lon_X"] = lon
+        loc_px["lat_X"] = lat
+        print("Pixel coordinates detected as Lambert-93.")
+
+    g_x, g_y = to_l93.transform(
+        location_gauges["Longitude"].to_numpy(float),
+        location_gauges["Latitude"].to_numpy(float),
+    )
+
     location_gauges["X_m"] = g_x
     location_gauges["Y_m"] = g_y
 
     px_xy = np.column_stack([loc_px["X_m"].to_numpy(), loc_px["Y_m"].to_numpy()])
     g_xy = np.column_stack([location_gauges["X_m"].to_numpy(), location_gauges["Y_m"].to_numpy()])
 
-    # nearest pixel to each gauge
     nearest_idx = np.empty(len(location_gauges), dtype=np.int64)
+
     for i in range(len(location_gauges)):
         d2 = ((px_xy - g_xy[i]) ** 2).sum(axis=1)
         nearest_idx[i] = int(np.argmin(d2))
 
     location_gauges["closest_pixel"] = loc_px["pixel_name"].iloc[nearest_idx].to_numpy()
-    location_gauges["lon_X"] = loc_px["Longitude"].iloc[nearest_idx].to_numpy()
-    location_gauges["lat_X"] = loc_px["Latitude"].iloc[nearest_idx].to_numpy()
+    location_gauges["lon_X"] = loc_px["lon_X"].iloc[nearest_idx].to_numpy()
+    location_gauges["lat_X"] = loc_px["lat_X"].iloc[nearest_idx].to_numpy()
 
-    # pixels within radius around the closest pixel
     station_pixels: Dict[str, List[str]] = {}
 
     for _, row in location_gauges.iterrows():
@@ -143,19 +157,15 @@ def build_station_radius_pixels(
         dy = loc_px["Y_m"].to_numpy() - cy
         dist = np.sqrt(dx * dx + dy * dy)
 
-        mask = dist <= radius_m
-
-        pix_df = loc_px.loc[mask, ["pixel_name", "X_m", "Y_m"]].copy()
+        pix_df = loc_px.loc[dist <= radius_m, ["pixel_name", "X_m", "Y_m"]].copy()
         pix_df["dist_to_center"] = np.sqrt(
             (pix_df["X_m"] - cx) ** 2 + (pix_df["Y_m"] - cy) ** 2
         )
 
         pix_df = pix_df.sort_values("dist_to_center")
-
         station_pixels[st] = pix_df["pixel_name"].astype(str).tolist()
 
     return location_gauges, loc_px, station_pixels
-
 
 #Read COMEPHORE only for needed time range using chunks
 def read_comephore_filtered(
@@ -208,6 +218,12 @@ def build_table(
         rain_hsm=rain_hsm,
         radius_m=radius_m,
     )
+
+
+    # remove "brives", "hydro", "cines" stations from loc_gauges
+    location_gauges = location_gauges[~location_gauges["Station"].isin(["brives", "hydro", "cines"])]
+    # remove it from rain as well
+    rain_hsm = rain_hsm.drop(columns=["brives", "hydro", "cines"])
 
     # COMEPHORE
     comephore = read_comephore_filtered(

@@ -7,18 +7,22 @@ import matplotlib.pyplot as plt
 
 from downscaling.egpd import egpd_cdf, egpd_mean, qegpd
 from downscaling.paths import DIAG_DIR
+from downscaling.plotting import PLOT_DPI, clean_figure, configure_plot_style, pretty_predictor_name, save_png
 from downscaling.splits import make_train_valid_test_split
 
-def save_diag_fig(fig, name: str, dpi: int = 300):
+from downscaling.config import MODEL_ORDER
+
+
+configure_plot_style()
+
+
+def save_diag_fig(fig, name: str, dpi: int = PLOT_DPI):
     """
-    Save diagnostic figure in both PNG and PDF formats.
+    Save diagnostic figure as a transparent, compressed PNG.
     """
     png_path = os.path.join(DIAG_DIR, f"{name}.png")
-    pdf_path = os.path.join(DIAG_DIR, f"{name}.pdf")
-    fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
-    fig.savefig(pdf_path, bbox_inches="tight")
+    save_png(fig, png_path, dpi=dpi)
     print(f"Saved: {png_path}")
-    print(f"Saved: {pdf_path}")
 
 # Comparison summary
 def summarize_model_comparison(res: pd.DataFrame) -> pd.DataFrame:
@@ -205,13 +209,14 @@ def _finalize_and_save(
     fig,
     save_name: Optional[str] = None,
     save_dir: Optional[str] = None,
-    dpi: int = 300,
+    dpi: int = PLOT_DPI,
 ):
     """
-    Show the figure and optionally save it as PNG and PDF.
+    Show the figure and optionally save it as a transparent, compressed PNG.
 
     If save_name is None, the figure is only shown.
     """
+    clean_figure(fig)
     fig.tight_layout()
 
     if save_name is not None:
@@ -221,13 +226,9 @@ def _finalize_and_save(
         os.makedirs(save_dir, exist_ok=True)
 
         png_path = os.path.join(save_dir, f"{save_name}.png")
-        pdf_path = os.path.join(save_dir, f"{save_name}.pdf")
-
-        fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
-        fig.savefig(pdf_path, bbox_inches="tight")
+        save_png(fig, png_path, dpi=dpi)
 
         print(f"Saved: {png_path}")
-        print(f"Saved: {pdf_path}")
 
     plt.show()
 
@@ -289,7 +290,6 @@ def plot_exponential_qq(
 
     ax.set_xlabel("Theoretical Exp(1) quantiles")
     ax.set_ylabel("Empirical transformed quantiles")
-    ax.set_title("Exponential QQ plot")
     ax.legend()
     ax.grid(alpha=0.3)
 
@@ -350,8 +350,6 @@ def plot_pit_histograms(
         ax.set_xlabel("PIT")
         ax.set_ylabel("Density")
         ax.grid(alpha=0.3)
-
-    fig.suptitle("PIT histograms", y=1.03)
 
     _finalize_and_save(fig, save_name=save_name)
 
@@ -433,11 +431,9 @@ def plot_predicted_vs_observed(
         ax.set_xlim(left=0.0)
         ax.set_ylim(bottom=0.0)
         ax.set_title(model)
-        ax.set_xlabel(pred_col)
-        ax.set_ylabel(y_col)
+        ax.set_xlabel(pretty_predictor_name(pred_col))
+        ax.set_ylabel(pretty_predictor_name(y_col))
         ax.grid(alpha=0.3)
-
-    fig.suptitle(f"Predicted vs observed: {pred_col}", y=1.03)
 
     _finalize_and_save(fig, save_name=save_name)
 
@@ -535,7 +531,6 @@ def plot_quantile_calibration(
     ax.set_ylim(0.0, 1.0)
     ax.set_xlabel("Nominal quantile level")
     ax.set_ylabel("Empirical coverage")
-    ax.set_title("Quantile calibration")
     ax.legend()
     ax.grid(alpha=0.3)
 
@@ -661,9 +656,8 @@ def plot_tail_exceedance_calibration(
 
     ax.set_xlim(left=0.0)
     ax.set_ylim(bottom=0.0)
-    ax.set_xlabel("Mean predicted exceedance probability")
-    ax.set_ylabel("Empirical exceedance probability")
-    ax.set_title("Tail exceedance calibration")
+    ax.set_xlabel(r"Mean predicted $P(X_{\mathbf{s},t} > u \mid \mathbf{C}_{\mathbf{s},t})$")
+    ax.set_ylabel(r"Empirical $P(X_{\mathbf{s},t} > u)$")
     ax.legend()
     ax.grid(alpha=0.3)
 
@@ -676,13 +670,13 @@ def plot_parameter_distributions(
     df: pd.DataFrame,
     model_order: Optional[Sequence[str]] = None,
     model_col: str = "model",
-    param_cols: Sequence[str] = ("sigma", "kappa", "xi"),
+    param_cols: Sequence[str] = ("sigma", "kappa"),
     n_bins: int = 30,
-    figsize_per_panel: Tuple[float, float] = (4.5, 3.5),
+    figsize: Tuple[float, float] = (6.5, 4.0),
     save_name: Optional[str] = None,
 ):
     """
-    Plot predicted parameter distributions by model.
+    Plot one predicted parameter distribution per figure.
     """
     required = [model_col, *param_cols]
     missing = [c for c in required if c not in df.columns]
@@ -691,16 +685,15 @@ def plot_parameter_distributions(
         raise ValueError(f"Missing columns in dataframe: {missing}")
 
     models = _get_models_in_order(df, model_col=model_col, model_order=model_order)
-    n_params = len(param_cols)
 
-    fig, axes = plt.subplots(
-        n_params,
-        1,
-        figsize=(figsize_per_panel[0], figsize_per_panel[1] * n_params),
-        squeeze=False,
-    )
+    latex_names = {
+        "sigma": r"\widehat{\sigma}",
+        "kappa": r"\widehat{\kappa}",
+        "xi": r"\widehat{\xi}",
+    }
+    for param in param_cols:
+        fig, ax = plt.subplots(figsize=figsize)
 
-    for ax, param in zip(axes.ravel(), param_cols):
         for model in models:
             vals = (
                 df.loc[df[model_col] == model, param]
@@ -720,13 +713,25 @@ def plot_parameter_distributions(
                 label=model,
             )
 
-        ax.set_title(f"Distribution of {param}")
-        ax.set_xlabel(param)
+        ax.set_xlabel(rf"${latex_names.get(param, param)}$")
         ax.set_ylabel("Density")
         ax.grid(alpha=0.3)
-        ax.legend()
 
-    _finalize_and_save(fig, save_name=save_name)
+        ax.legend(
+            fontsize=7,
+            loc="center left",
+            bbox_to_anchor=(1.02, 0.5),
+            frameon=False,
+        )
+
+        fig.tight_layout()
+
+        if save_name is not None:
+            param_save_name = f"{save_name}_{param}"
+        else:
+            param_save_name = None
+
+        _finalize_and_save(fig, save_name=param_save_name)
 
 
 def summarize_prediction_diagnostics(
@@ -899,8 +904,7 @@ def plot_train_test_distribution_shift(
     ax.plot(probs, q_test, label="test")
 
     ax.set_xlabel("Quantile level")
-    ax.set_ylabel(y_col)
-    ax.set_title("Train-valid vs test distribution shift")
+    ax.set_ylabel(pretty_predictor_name(y_col))
     ax.grid(alpha=0.3)
     ax.legend()
 
@@ -921,7 +925,7 @@ def repeated_test_distribution_checks(
     df: pd.DataFrame,
     n_repeats: int = 20,
     test_frac: float = 0.10,
-    block: str = "30D",
+    block: str = "15D",
     base_seed: int = 2026,
     y_col: str = "Y_obs",
 ):
@@ -1020,7 +1024,95 @@ def plot_exponential_qq_single_model(
     ax.set_ylim(bottom=0.0)
     ax.set_xlabel("Theoretical exponential quantiles")
     ax.set_ylabel("Empirical transformed quantiles")
-    ax.set_title(f"Exponential-margin Q-Q plot: {model_name}")
     ax.grid(alpha=0.3)
 
     _finalize_and_save(fig, save_name=save_name)
+
+
+def get_radar_cols_for_terciles(df: pd.DataFrame, use_dt0h_only: bool = True) -> list[str]:
+    if use_dt0h_only:
+        cols = [c for c in df.columns if c.startswith("X_p") and "dt0h" in c]
+    else:
+        cols = [c for c in df.columns if c.startswith("X_p")]
+
+    if len(cols) == 0:
+        raise ValueError("No radar columns found. Expected columns like X_p01_dt0h, X_p02_dt0h, ...")
+    return cols
+
+
+def add_radar_tercile_group(
+    df: pd.DataFrame,
+    site: str,
+    model: str,
+    station_col: str = "left_out_station",
+    radar_cols: list[str] | None = None,
+    use_dt0h_only: bool = True,
+    radar_summary: str = "mean",
+    verbose: bool = False,
+) -> pd.DataFrame:
+    d = df[(df["model"] == model) & (df[station_col] == site)].copy()
+
+    if len(d) == 0:
+        raise ValueError(f"No data for model={model} and site={site}")
+
+    if radar_cols is None:
+        radar_cols = get_radar_cols_for_terciles(d, use_dt0h_only=use_dt0h_only)
+
+    radar_mat = d[radar_cols].to_numpy(float)
+
+    if radar_summary == "mean":
+        d["radar_score"] = np.nanmean(radar_mat, axis=1)
+    elif radar_summary == "max":
+        d["radar_score"] = np.nanmax(radar_mat, axis=1)
+    elif radar_summary == "sum":
+        d["radar_score"] = np.nansum(radar_mat, axis=1)
+    else:
+        raise ValueError("radar_summary must be 'mean', 'max', or 'sum'.")
+
+    d = d[np.isfinite(d["radar_score"])].copy()
+    q1, q2 = np.nanquantile(d["radar_score"], [1 / 3, 2 / 3])
+
+    d["radar_tercile"] = pd.cut(
+        d["radar_score"],
+        bins=[-np.inf, q1, q2, np.inf],
+        labels=["Low radar", "Medium radar", "High radar"],
+        include_lowest=True,
+    )
+
+    if verbose:
+        print("\nRadar columns used:", radar_cols)
+        print("Radar summary:", radar_summary)
+        print("Radar terciles:", q1, q2)
+        print(d["radar_tercile"].value_counts(dropna=False))
+
+    return d
+
+
+def attach_radar_columns_to_predictions(
+    pred_df: pd.DataFrame,
+    df_model: pd.DataFrame,
+    stations: list[str],
+    station_col: str,
+    model_order: list[str],
+) -> pd.DataFrame:
+    radar_cols = [c for c in df_model.columns if c.startswith("X_p")]
+    if len(radar_cols) == 0:
+        print("No radar columns found in df_model. Returning pred_df unchanged.")
+        return pred_df
+
+    radar_blocks = []
+    for station in stations:
+        d_station = df_model[df_model[station_col] == station].copy()
+        for _model in model_order:
+            radar_blocks.append(d_station[radar_cols])
+
+    radar_block = pd.concat(radar_blocks, ignore_index=True).reset_index(drop=True)
+    pred_out = pred_df.reset_index(drop=True).copy()
+
+    if len(pred_out) != len(radar_block):
+        raise ValueError(
+            f"Prediction/radar mismatch: pred={len(pred_out)}, radar={len(radar_block)}. "
+            "Check that model_order matches the order used in the LOSO prediction loop."
+        )
+
+    return pd.concat([pred_out, radar_block], axis=1)

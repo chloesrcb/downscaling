@@ -13,6 +13,14 @@ from downscaling.egpd import (
 
 qeGPD = qegpd
 
+from typing import Sequence
+from downscaling.config import (
+    KAPPA_LIMIT, REFERENCE_MODEL, MODEL_ORDER, MODEL_ORDER_NO_REF, STATION_COL_CANDIDATES
+)
+
+from downscaling.diagnostics import add_radar_tercile_group
+
+
 def make_irregular_thresholds_from_data(y: np.ndarray) -> np.ndarray:
     """
     Make irregular thresholds for CRPS integration based on the data distribution.
@@ -432,3 +440,283 @@ def make_prediction_df(
     pred["kappa"] = np.asarray(kappa_t, dtype=float)
     pred["xi"] = np.asarray(xi_t, dtype=float)
     return pred
+
+
+
+def cramer_von_mises_from_pit(pit: Sequence[float]) -> float:
+    u = np.sort(np.asarray(pit, dtype=float))
+    u = u[np.isfinite(u)]
+    n = len(u)
+    if n == 0:
+        return np.nan
+    i = np.arange(1, n + 1)
+    return float(1.0 / (12.0 * n) + np.sum((u - (2.0 * i - 1.0) / (2.0 * n)) ** 2))
+
+
+def compute_pit(pred_df: pd.DataFrame) -> np.ndarray:
+    return np.clip(
+        egpd_cdf(
+            pred_df["Y_obs"].to_numpy(float),
+            pred_df["sigma"].to_numpy(float),
+            pred_df["kappa"].to_numpy(float),
+            pred_df["xi"].to_numpy(float),
+        ),
+        1e-12,
+        1 - 1e-12,
+    )
+
+
+def transformed_exponential_pit(pred_df: pd.DataFrame) -> np.ndarray:
+    pit = compute_pit(pred_df)
+    z = -np.log(1 - pit)
+    return z[np.isfinite(z)]
+    
+
+# Scores and skill scores
+def twcrps_alpha_outputs(
+    pred_df: pd.DataFrame,
+    alpha: float = 1.0,
+    q_low: float = 0.95,
+    q_high: float = 0.995,
+    n_thresholds: int = 24,
+    thresholds: np.ndarray | None = None,
+    normalize_weights: bool = False,
+) -> dict:
+    y = pred_df["Y_obs"].to_numpy(float)
+    y_pos = y[np.isfinite(y) & (y > 0)]
+
+    if len(y_pos) < 20:
+        return {
+            "twcrps_sum": np.nan,
+            "twcrps_mean": np.nan,
+            "twcrps_thresholds": np.nan,
+            "twcrps_n_obs": len(y),
+        }
+
+    if thresholds is None:
+        thresholds = make_rain_twcrps_thresholds(
+            y,
+            q_low=q_low,
+            q_high=q_high,
+            n_thresholds=n_thresholds,
+        )
+
+    thresholds = np.asarray(thresholds, dtype=float)
+    thresholds = np.unique(thresholds[np.isfinite(thresholds)])
+
+    if len(thresholds) == 0:
+        return {
+            "twcrps_sum": np.nan,
+            "twcrps_mean": np.nan,
+            "twcrps_thresholds": 0,
+            "twcrps_n_obs": len(y),
+        }
+
+    u0 = float(np.nanquantile(y_pos, q_low))
+    if (not np.isfinite(u0)) or u0 <= 0:
+        u0 = float(np.nanmin(thresholds[thresholds > 0]))
+
+    weights = twcrps_weight_rain_power(
+        thresholds,
+        u0=u0,
+        alpha=alpha,
+        normalize=normalize_weights,
+    )
+
+    out = twcrps_discrete_sum_egpd(
+        y=y,
+        sigma=pred_df["sigma"].to_numpy(float),
+        kappa=pred_df["kappa"].to_numpy(float),
+        xi=pred_df["xi"].to_numpy(float),
+        thresholds=thresholds,
+        weights=weights,
+    )
+
+    sum_keys = ["twcrps_discrete_sum_obs_thr", "twcrps_sum", "twcrps_sum_obs_thr"]
+    mean_keys = ["twcrps_discrete_mean_obs_thr", "twcrps_mean", "twcrps_mean_obs_thr"]
+
+    tw_sum = next((out[k] for k in sum_keys if k in out), None)
+    tw_mean = next((out[k] for k in mean_keys if k in out), None)
+
+    if tw_sum is None and tw_mean is not None:
+        tw_sum = float(tw_mean) * len(y) * len(thresholds)
+    if tw_mean is None and tw_sum is not None:
+        tw_mean = float(tw_sum) / (len(y) * len(thresholds))
+
+    return {
+        "twcrps_sum": float(tw_sum),
+        "twcrps_mean": float(tw_mean),
+        "twcrps_thresholds": int(len(thresholds)),
+        "twcrps_n_obs": int(len(y)),
+    }
+
+
+def score_one_prediction_table(pred_df: pd.DataFrame, alpha: float = 1.0) -> dict:
+    y = pred_df["Y_obs"].to_numpy(float)
+    sigma = pred_df["sigma"].to_numpy(float)
+    kappa = pred_df["kappa"].to_numpy(float)
+    xi = pred_df["xi"].to_numpy(float)
+
+    pit = np.clip(egpd_cdf(y, sigma, kappa, xi), 1e-12, 1 - 1e-12)
+    z = -np.log(1 - pit)
+
+    metrics = summarize_distribution_metrics(y, sigma, kappa, xi)
+    smad = smad_exponential_margins(y, sigma, kappa, xi, p1=0.95)
+    tw = twcrps_alpha_outputs(pred_df, alpha=alpha, normalize_weights=False)
+
+    return {
+        "n": len(pred_df),
+        "crps_mean": metrics.get("crps_mean", np.nan),
+        "twcrps_sum": tw["twcrps_sum"],
+        "twcrps_mean": tw["twcrps_mean"],
+        "twcrps_n_obs": tw["twcrps_n_obs"],
+        "twcrps_thresholds": tw["twcrps_thresholds"],
+        "smad": smad["smad"],
+        "pit_mean": float(np.mean(pit)),
+        "pit_var": float(np.var(pit, ddof=1)),
+        "pit_cvm": cramer_von_mises_from_pit(pit),
+        "exp_mean": float(np.mean(z)),
+        "exp_var": float(np.var(z, ddof=1)),
+        "kappa_median": float(np.nanmedian(kappa)),
+        "kappa_q95": float(np.nanquantile(kappa, 0.95)),
+        "kappa_q99": float(np.nanquantile(kappa, 0.99)),
+        "kappa_max": float(np.nanmax(kappa)),
+        "prop_kappa_gt_1": float(np.mean(kappa > 1.0)),
+        "prop_kappa_gt_2": float(np.mean(kappa > KAPPA_LIMIT)),
+        "kappa_excess_mean": float(np.mean(np.maximum(kappa - KAPPA_LIMIT, 0.0))),
+    }
+
+
+def score_loso_by_station(pred_df: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    for (model, station), d in pred_df.groupby(["model", "left_out_station"]):
+        rows.append({
+            "model": model,
+            "left_out_station": station,
+            **score_one_prediction_table(d, alpha=1.0),
+        })
+    return pd.DataFrame(rows)
+
+
+def summarize_loso_scores(loso_scores: pd.DataFrame) -> pd.DataFrame:
+    summary = (
+        loso_scores
+        .groupby("model")
+        .agg(
+            n_sites=("left_out_station", "nunique"),
+            n_obs=("n", "sum"),
+            twcrps_sum_total=("twcrps_sum", "sum"),
+            twcrps_sum_mean_site=("twcrps_sum", "mean"),
+            twcrps_sum_sd_site=("twcrps_sum", "std"),
+            twcrps_mean_mean_site=("twcrps_mean", "mean"),
+            crps_mean=("crps_mean", "mean"),
+            crps_sd=("crps_mean", "std"),
+            smad_mean=("smad", "mean"),
+            smad_sd=("smad", "std"),
+            pit_cvm_mean=("pit_cvm", "mean"),
+            pit_cvm_sd=("pit_cvm", "std"),
+            pit_mean_mean=("pit_mean", "mean"),
+            pit_var_mean=("pit_var", "mean"),
+            kappa_q99_mean=("kappa_q99", "mean"),
+            prop_kappa_gt_2_mean=("prop_kappa_gt_2", "mean"),
+            kappa_excess_mean=("kappa_excess_mean", "mean"),
+        )
+        .reset_index()
+    )
+
+    for col in [
+        "twcrps_sum_total",
+        "twcrps_sum_mean_site",
+        "twcrps_mean_mean_site",
+        "crps_mean",
+        "smad_mean",
+        "pit_cvm_mean",
+        "kappa_q99_mean",
+        "prop_kappa_gt_2_mean",
+    ]:
+        if col in summary.columns:
+            best = summary[col].min(skipna=True)
+            summary[f"{col}_delta"] = summary[col] - best
+            summary[f"{col}_rel_delta_pct"] = 100.0 * (summary[col] / best - 1.0) if best != 0 else np.nan
+
+    return summary.sort_values("twcrps_sum_total").reset_index(drop=True)
+
+
+def add_skill_scores_vs_reference(
+    scores_df: pd.DataFrame,
+    group_cols: list[str] | None = None,
+    ref_model: str = REFERENCE_MODEL,
+    score_cols: list[str] | None = None,
+) -> pd.DataFrame:
+    if group_cols is None:
+        group_cols = []
+    if score_cols is None:
+        score_cols = ["crps_mean", "twcrps_sum", "twcrps_mean"]
+
+    skill_names = {
+        "crps_mean": "crps_skill",
+        "twcrps_sum": "twcrps_skill",
+        "twcrps_mean": "twcrps_mean_skill",
+        "smad": "smad_skill",
+    }
+
+    out = scores_df.copy()
+
+    if len(group_cols) == 0:
+        ref_rows = out[out["model"] == ref_model]
+        if len(ref_rows) != 1:
+            raise ValueError(f"Expected exactly one reference row for {ref_model}, got {len(ref_rows)}.")
+
+        ref_row = ref_rows.iloc[0]
+        for c in score_cols:
+            ref_value = ref_row[c]
+            out[f"{c}_ref"] = ref_value
+            out[skill_names.get(c, f"{c}_skill")] = np.where(
+                ref_value > 0,
+                1.0 - out[c] / ref_value,
+                np.nan,
+            )
+        return out
+
+    ref = (
+        out[out["model"] == ref_model]
+        [group_cols + score_cols]
+        .rename(columns={c: f"{c}_ref" for c in score_cols})
+    )
+
+    out = out.merge(ref, on=group_cols, how="left")
+
+    for c in score_cols:
+        ref_c = f"{c}_ref"
+        out[skill_names.get(c, f"{c}_skill")] = np.where(
+            out[ref_c] > 0,
+            1.0 - out[c] / out[ref_c],
+            np.nan,
+        )
+
+    return out
+
+
+def score_by_radar_tercile(pred_df: pd.DataFrame, site: str) -> pd.DataFrame:
+    rows = []
+    for model in MODEL_ORDER:
+        if model not in pred_df["model"].unique():
+            continue
+        d = add_radar_tercile_group(
+            pred_df,
+            site=site,
+            model=model,
+            station_col="left_out_station",
+            use_dt0h_only=True,
+            radar_summary="mean",
+        )
+        for tercile, g in d.groupby("radar_tercile", observed=True):
+            if len(g) < 20:
+                continue
+            rows.append({
+                "model": model,
+                "site": site,
+                "radar_tercile": str(tercile),
+                **score_one_prediction_table(g, alpha=1.0),
+            })
+    return pd.DataFrame(rows)

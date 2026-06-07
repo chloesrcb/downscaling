@@ -6,6 +6,11 @@ import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
+from downscaling.plotting import PLOT_DPI, clean_figure, configure_plot_style, save_png
+
+
+configure_plot_style()
+
 from downscaling.config import TIME_COLS, SPATIAL_COLS
 from downscaling.data import get_x_cols27_downscaling
 from downscaling.occurrence_metrics import sigmoid_np
@@ -250,17 +255,17 @@ def predict_occurrence_logit(model, X):
 
 
 def plot_loss_history(fit: dict, title: str, filename: Optional[str] = None):
-    plt.figure(figsize=(6, 4))
-    plt.plot(fit["train_loss"], label="train")
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot(fit["train_loss"], label="train")
     if len(fit["valid_loss"]) > 0:
-        plt.plot(fit["valid_loss"], label="valid")
-    plt.xlabel("Epoch")
-    plt.ylabel("Binary cross-entropy")
-    plt.title(title)
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+        ax.plot(fit["valid_loss"], label="valid")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Binary cross-entropy")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    clean_figure(fig)
     plt.tight_layout()
 
     if filename is not None:
-        plt.savefig(filename, dpi=300, bbox_inches="tight")
+        save_png(fig, filename, dpi=PLOT_DPI)
     plt.show()

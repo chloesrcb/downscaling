@@ -38,12 +38,14 @@ from downscaling.paths import (
     IM_FOLDER,
     make_output_dirs,
 )
+from downscaling.plotting import RESPONSE_LABEL, configure_plot_style, save_png
 from downscaling.splits import (
     make_blocked_cv_splits,
     make_train_valid_test_split,
 )
 
 make_output_dirs()
+configure_plot_style()
 
 # %%
 # Output files
@@ -69,14 +71,14 @@ print("df_model shape:", df_model.shape)
 df_train_valid, df_test, test_split_info = make_train_valid_test_split(
     df=df_model,
     test_frac=0.10,
-    block="7D",
+    block="15D",
     seed=2026,
 )
 
 cv_splits = make_blocked_cv_splits(
     df=df_train_valid,
     n_splits=3,
-    block="7D",
+    block="15D",
     seed=1,
 )
 
@@ -113,7 +115,7 @@ baseline_grid = {
     "variant": ["both", "sigma_only", "kappa_only"],
     "covariate_col": candidate_covariates,
     "censor_threshold": [0.22, 0.40, 0.44],
-    "xi_init": [XI_INIT, 0.15, 0.20, 0.30],
+    "xi_init": [XI_INIT, 0.15, 0.20, 0.25],
     "fix_xi": [False],
 }
 
@@ -373,7 +375,6 @@ print("Signature fit_predict_regression_test:")
 print(inspect.signature(fit_predict_regression_test))
 #%%
 # Test results
-
 test_res = pd.DataFrame(test_rows)
 
 sort_test_cols = [
@@ -435,7 +436,7 @@ plot_quantile_calibration(
 plot_tail_exceedance_calibration(
     pred_test_all,
     model_order=model_order,
-    thresholds=(0.5, 1.0, 2.0, 5.0, 10.0),
+    thresholds=(1.5, 2.0, 5.0, 8.0, 10.0),
     save_name="tail_exceedance_calibration_test.png",
 )
 
@@ -449,5 +450,146 @@ print("\nTest summary:")
 print(test_summary.to_string(index=False))
 
 #%%
-# all names of station
-print(df_raw["station"].unique())
+# print scores
+print("\nTest scores:")
+score_cols = [
+    "model_name",
+    "twcrps_sum",
+    "crps_mean",
+    "smad",
+    "mean_abs_err_mean",
+]
+score_cols = [c for c in score_cols if c in test_res.columns]
+print(test_res[score_cols].to_string(index=False))
+
+#%%
+#%%
+# Prediction vs observed on test
+
+plot_predicted_vs_observed(
+    pred_test_all,
+    model_order=model_order,
+    save_name="predicted_vs_observed_test.png",
+)
+
+#%%
+#%%
+#%%
+model_name = (
+    f"{model_type.upper()} | {variant} | {covariate_col} | "
+    f"censor={censor_threshold} | xi_init={xi_init}"
+)
+
+pred["model_name"] = model_name
+
+row["model_name"] = model_name
+row["model_type"] = model_type
+row["variant"] = variant
+row["covariate"] = covariate_col
+row["censor_threshold"] = censor_threshold
+row["xi_init"] = xi_init
+
+#%%
+test_res["model_name"] = (
+    test_res.apply(
+        lambda r: f"{r['model_type'].upper()} | {r['variant']} | {r['covariate']} | "
+                  f"censor={r['censor_threshold']} | xi_init={r['xi_init']}",
+        axis=1
+    )
+)
+#%%
+# Time series observed and predictions in two separate plots
+
+best_model_name = test_res.iloc[0]["model_name"]
+
+df_plot = pred_test_all[pred_test_all["model_name"] == best_model_name].copy()
+df_plot = df_plot.sort_values("time")
+
+# Optionnel : choisir une station
+if "station" in df_plot.columns:
+    station_to_plot = df_plot["station"].value_counts().index[5]
+    df_plot = df_plot[df_plot["station"] == station_to_plot].copy()
+else:
+    station_to_plot = None
+
+title_suffix = f" - station {station_to_plot}" if station_to_plot is not None else ""
+
+# --------
+# 1) Observed only
+# --------
+fig, ax = plt.subplots(figsize=(14, 4))
+ax.scatter(df_plot["time"], df_plot["Y_obs"], label=RESPONSE_LABEL, alpha=0.8)
+ax.set_xlabel("Time")
+ax.set_ylabel(RESPONSE_LABEL)
+ax.grid(alpha=0.3)
+ax.legend()
+fig.tight_layout()
+save_png(fig, os.path.join(IM_FOLDER, "timeseries_observed_test.png"))
+plt.show()
+
+# --------
+# 2) Predictions only
+# --------
+fig, ax = plt.subplots(figsize=(14, 4))
+ax.scatter(df_plot["time"], df_plot["mean_pred"], s=8, alpha=0.7, label=r"Predicted mean of $X_{\mathbf{s},t}$")
+ax.set_xlabel("Time")
+ax.set_ylabel(r"Predicted $X_{\mathbf{s},t}$")
+ax.grid(alpha=0.3)
+ax.legend()
+fig.tight_layout()
+save_png(fig, os.path.join(IM_FOLDER, "timeseries_predictions_test.png"))
+plt.show()
+
+#%%
+# on the same plot
+fig, ax = plt.subplots(figsize=(14, 4))
+ax.scatter(df_plot["time"], df_plot["Y_obs"], label=RESPONSE_LABEL, alpha=0.8)
+# ax.scatter(df_plot["time"], df_plot["mean_pred"], alpha=0.7, label=r"Predicted mean of $X_{\mathbf{s},t}$")
+ax.scatter(df_plot["time"], df_plot["q95_pred"], alpha=0.7, label=r"Predicted 95% quantile of $X_{\mathbf{s},t}$")
+ax.set_xlabel("Time")
+ax.set_ylabel(RESPONSE_LABEL)
+ax.grid(alpha=0.3)
+ax.legend()
+fig.tight_layout()
+save_png(fig, os.path.join(IM_FOLDER, "timeseries_observed_predicted_test.png"))
+plt.show()
+
+
+#%%
+fig, ax = plt.subplots(figsize=(12, 4))
+ax.scatter(df_plot["time"], df_plot["sigma"])
+save_png(fig, os.path.join(IM_FOLDER, "timeseries_sigma_test.png"))
+plt.show()
+
+fig, ax = plt.subplots(figsize=(12, 4))
+ax.scatter(df_plot["time"], df_plot["kappa"])
+save_png(fig, os.path.join(IM_FOLDER, "timeseries_kappa_test.png"))
+plt.show()
+
+#%%
+# on the same plot
+fig, ax = plt.subplots(figsize=(14, 4))
+ax.scatter(df_plot["time"], df_plot["Y_obs"], label=RESPONSE_LABEL, alpha=0.8)
+ax.scatter(df_plot["time"], df_plot["q50_pred"], alpha=0.7, label=r"Predicted median of $X_{\mathbf{s},t}$")
+ax.scatter(df_plot["time"], df_plot["q75_pred"], alpha=0.7, label=r"Predicted 75% quantile of $X_{\mathbf{s},t}$")
+ax.set_xlabel("Time")
+ax.set_ylabel(RESPONSE_LABEL)
+ax.grid(alpha=0.3)
+ax.legend()
+fig.tight_layout()
+save_png(fig, os.path.join(IM_FOLDER, "timeseries_observed_predicted_test.png"))
+plt.show()
+
+#%% zoom on a specific period
+fig, ax = plt.subplots(figsize=(14, 4))
+mask_zoom = (df_plot["time"] >= "2022-08-01") & (df_plot["time"] <= "2022-10-30")
+ax.scatter(df_plot.loc[mask_zoom, "time"], df_plot.loc[mask_zoom, "Y_obs"], label=RESPONSE_LABEL, alpha=0.8)
+ax.scatter(df_plot.loc[mask_zoom, "time"], df_plot.loc[mask_zoom, "q50_pred"], alpha=0.7, label=r"Predicted median of $X_{\mathbf{s},t}$")
+ax.scatter(df_plot.loc[mask_zoom, "time"], df_plot.loc[mask_zoom, "q75_pred"], alpha=0.7, label=r"Predicted 75% quantile of $X_{\mathbf{s},t}$")
+ax.set_xlabel("Time")
+ax.set_ylabel(RESPONSE_LABEL)
+ax.grid(alpha=0.3)
+ax.legend()
+fig.tight_layout()
+save_png(fig, os.path.join(IM_FOLDER, "timeseries_observed_predicted_zoom_test.png"))
+plt.show()

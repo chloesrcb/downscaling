@@ -38,16 +38,16 @@ df_raw = pd.read_csv(DOWNSCALING_TABLE, sep=";")
 df_raw["time"] = pd.to_datetime(df_raw["time"], utc=True)
 
 print("Raw shape:", df_raw.shape)
-print("Missing values in Y_obs:", df_raw["Y_obs"].isna().sum())
-print("Proportion of Y_obs = 0:", (df_raw["Y_obs"] == 0).mean())
+print("Missing values in response X_s,t:", df_raw["Y_obs"].isna().sum())
+print("Proportion of X_s,t = 0:", (df_raw["Y_obs"] == 0).mean())
 
 #%%
 df_all, df_pos, x_cols27, x_cols_all = prepare_analysis_dataframe(df_raw)
 
 print("Prepared df_all shape:", df_all.shape)
 print("Prepared df_pos shape:", df_pos.shape)
-print("Number of radar pixel-time covariates:", len(x_cols27))
-print("Number of all candidate covariates:", len(x_cols_all))
+print("Number of raw COMEPHORE predictors C_j,l:", len(x_cols27))
+print("Number of all candidate predictors C_s,t:", len(x_cols_all))
 
 df_all.to_csv(os.path.join(TAB_DIR, "prepared_all_nonmissing_y.csv"), index=False)
 df_pos.to_csv(os.path.join(TAB_DIR, "prepared_positive_with_radar.csv"), index=False)
@@ -69,20 +69,20 @@ fig_occurrence_contingency(df_all)
 fig_occurrence_rates_by_month_hour(df_all)
 
 #%%
-# Figures on positive rainfall intensities.
+# Figures on positive local rainfall intensities X_s,t.
 fig_positive_rainfall_distribution(df_pos)
 fig_survival_positive_rainfall(df_pos)
 fig_tipping_bucket_discretization(df_pos)
 
 #%%
-# Radar-gauge relationship.
+# Predictor-response relationship.
 fig_top_correlations(df_pos, x_cols_all)
 fig_lag_correlations(df_pos, x_cols27)
 fig_scatter_radar_gauge(df_pos, predictor="radar_max")
 
 
 #%%
-# Most correlated radar covariate
+# Most correlated predictor C
 corrs = (
     df_pos[["Y_obs"] + x_cols_all]
     .corr(numeric_only=True)["Y_obs"]

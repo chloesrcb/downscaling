@@ -32,8 +32,6 @@ paths = preprocess.Paths(
 )
 
 # %%
-# Checks avant build_table
-
 rain = preprocess.load_omsev(paths, start="2019-01-01", end="2025-01-01")
 loc_gauges = pd.read_csv(paths.filename_loc_gauges)
 loc_px = pd.read_csv(paths.filename_loc_px)
@@ -56,10 +54,16 @@ loc_gauges["Station"] = ["iem", "mse", "poly", "um", "cefe", "cnrs", "crbm",
                       "chu1", "chu2", "chu3", "chu4", "chu5", "chu6", "chu7",
                       "cines", "brives", "hydro"]
 
+# remove "brives", "hydro", "cines" stations from loc_gauges
+loc_gauges = loc_gauges[~loc_gauges["Station"].isin(["brives", "hydro", "cines"])]
+# remove it from rain as well
+rain = rain.drop(columns=["brives", "hydro", "cines"])
+
 #%%
+
 preprocess.build_table(
         paths=paths,
-        start="2019-01-01",
+        start="2019-09-01",
         end="2025-01-01",
         radius_m=1500.0,
         n_feat=27,
@@ -67,7 +71,6 @@ preprocess.build_table(
         chunksize_com=20000,
 )
 
-#%%
 # %%
 df_final = pd.read_csv(paths.output_file, sep=";")
 
@@ -82,17 +85,42 @@ print("stations finales:", df_final[station_col].nunique())
 print(sorted(df_final[station_col].unique()))
 print(df_final[station_col].value_counts().sort_index())
 
-
 # %%
-# comephore = pd.read_csv(paths.filename_com, sep=",", header=0)
 
-# # plot comephore pixel p100
-# import matplotlib.pyplot as plt
-# comephore["datetime"] = pd.to_datetime(comephore["datetime"], utc=True)
-# plt.plot(comephore["datetime"], comephore["p81"])
-# plt.title("COMEPHORE pixel p100 over time")
-# plt.xlabel("Time")
-# plt.ylabel("p100 value")
-# plt.grid()
-# plt.show()
-# %%
+# rain = preprocess.load_omsev(paths, start="2020-01-01", end="2020-01-10")
+
+# location_gauges, loc_px, station_pixels = build_station_radius_pixels(
+#     paths=paths,
+#     rain_hsm=rain,
+#     radius_m=1500.0,
+# )
+# #%%
+# print("\n=== Pixel coordinate sanity check ===")
+# print(loc_px.head())
+# print(loc_px[["lon_X", "lat_X", "X_m", "Y_m"]].describe())
+
+# #%%
+# print("\n=== Gauge / central pixel check ===")
+# cols = ["station", "Longitude", "Latitude", "closest_pixel", "lon_X", "lat_X", "X_m", "Y_m"]
+# print(location_gauges[cols].sort_values("station"))
+
+# print("\nUnique central pixels:")
+# print(location_gauges["closest_pixel"].value_counts())
+
+# #%%
+# rows = []
+
+# for _, row in location_gauges.iterrows():
+#     st = row["station"]
+#     pix_list = station_pixels[st]
+
+#     rows.append({
+#         "station": st,
+#         "closest_pixel": row["closest_pixel"],
+#         "p01_pixel": pix_list[0],
+#         "p01_is_closest": pix_list[0] == row["closest_pixel"],
+#         "n_pixels": len(pix_list),
+#     })
+
+# check_p01 = pd.DataFrame(rows)
+# print(check_p01.sort_values("station"))

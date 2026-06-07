@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 
-def make_time_blocks(df: pd.DataFrame, block: str = "30D") -> pd.Series:
+def make_time_blocks(df: pd.DataFrame, block: str = "15D") -> pd.Series:
     """
     Create time blocks for blocked cross-validation.
     They are randomly selected.
@@ -11,7 +11,7 @@ def make_time_blocks(df: pd.DataFrame, block: str = "30D") -> pd.Series:
 
 
 def make_blocked_cv_splits(df: pd.DataFrame, n_splits: int = 5,
-                            block: str = "30D",
+                            block: str = "15D",
                             seed: int = 1,):
     """
     Create blocked cross-validation splits based on time blocks.
@@ -44,7 +44,7 @@ def make_blocked_cv_splits(df: pd.DataFrame, n_splits: int = 5,
 def make_single_split_from_train(
                                 df_train: pd.DataFrame,
                                 train_frac: float = 0.8,
-                                block: str = "30D",
+                                block: str = "15D",
                                 seed: int = 123,
                             ):
     """
@@ -79,7 +79,7 @@ def make_single_split_from_train(
 def make_train_valid_test_split(
     df: pd.DataFrame,
     test_frac: float = 0.10,
-    block: str = "30D",
+    block: str = "15D",
     seed: int = 2026,
 ):
     """
@@ -126,7 +126,7 @@ def make_train_valid_test_split(
 
 # Build one blocked train/validation split
 # This avoids mixing nearby times between train and validation
-def make_split_blocked(df: pd.DataFrame, train_frac=0.8, seed=1, block="30D"):
+def make_split_blocked(df: pd.DataFrame, train_frac=0.8, seed=1, block="15D"):
     rng = np.random.default_rng(seed)
 
     d = df.copy()
@@ -149,7 +149,7 @@ def make_split_blocked(df: pd.DataFrame, train_frac=0.8, seed=1, block="30D"):
 
 
 # Build blocked cross-validation splits
-def make_blocked_cv_splits(df: pd.DataFrame, n_splits=5, block="30D", seed=1):
+def make_blocked_cv_splits(df: pd.DataFrame, n_splits=5, block="15D", seed=1):
     rng = np.random.default_rng(seed)
 
     d = df.copy()

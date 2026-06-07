@@ -36,6 +36,9 @@ def evaluate_nn_config_on_split(
     seed: int = 1,
     device: Optional[str] = None,
     weight_decay: float = 0.0,
+    return_history: bool = False,
+    kappa_max_nn: float = 1.5,
+    lambda_kappa: float = 0.05,
 ):
     fit, meta = run_one_nn_variant(
         df_model=df_model,
@@ -56,6 +59,8 @@ def evaluate_nn_config_on_split(
         patience=25,
         warmup_epochs=20,
         weight_decay=weight_decay,
+        kappa_max_nn=kappa_max_nn,
+        lambda_kappa=lambda_kappa,
     )
 
     df_valid = df_model.loc[split["valid_idx"]].copy()
@@ -85,6 +90,7 @@ def evaluate_nn_config_on_split(
         ),
         "train_loss": float(fit["train_nll"]),
         "stopped_epoch": int(fit.get("stopped_epoch", n_ep)),
+        "best_epoch": int(fit.get("best_epoch", np.nan)),
         "crps_mean": metrics["crps_mean"],
         "crps_sum": metrics["crps_sum"],
         "twcrps_mean": metrics["twcrps_mean"],
@@ -96,6 +102,9 @@ def evaluate_nn_config_on_split(
         "err95": metrics["abs_calib_err_0.95"],
         "err99": metrics["abs_calib_err_0.99"],
     }
+
+    if return_history:
+        out["history"] = fit.get("history", None)
 
     return out
 
@@ -116,6 +125,8 @@ def evaluate_nn_config_on_split_fast(
     device: Optional[str] = None,
     weight_decay: float = 0.0,
     return_history: bool = False,
+    kappa_max_nn: float = 1.5,
+    lambda_kappa: float = 0.05,
 ):
     fit, meta = run_one_nn_variant(
         df_model=df_model,
@@ -133,15 +144,18 @@ def evaluate_nn_config_on_split_fast(
         device=device,
         censor_threshold=censor_threshold,
         early_stopping=True,
-        patience=10,
-        warmup_epochs=10,
+        patience=25,
+        warmup_epochs=20,
         weight_decay=weight_decay,
+        kappa_max_nn=kappa_max_nn,
+        lambda_kappa=lambda_kappa,
     )
 
     res = {
         "valid_loss": float(fit.get("val_nll", np.nan)),
         "train_loss": float(fit["train_nll"]),
         "stopped_epoch": int(fit.get("stopped_epoch", n_ep)),
+        "best_epoch": int(fit.get("best_epoch", np.nan)),
     }
 
     if return_history:
@@ -252,6 +266,7 @@ def evaluate_fixed_nn_model(
             "best_xi_init": float(best_params["xi_init"]),
             "best_censor_threshold": float(best_params["censor_threshold"]),
             "best_init_source": best_params.get("init_source", "unknown"),
+            "best_epoch": int(fit.get("best_epoch", np.nan)),
             "stopped_epoch": int(fit.get("stopped_epoch", np.nan)),
             "smad_original": smad_all["smad"],
             "smad_original_m": smad_all["smad_m"],

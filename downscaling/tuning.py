@@ -6,14 +6,23 @@ import numpy as np
 
 from downscaling.config import SIGMA_INIT, KAPPA_INIT
 from downscaling.splits import make_single_split_from_train
-from downscaling.nn import Config, parse_widths, predict_params_on_df_variant
+from downscaling.nn import Config, parse_widths
 from downscaling.evaluation import (
     evaluate_nn_config_on_split,
     evaluate_nn_config_on_split_fast,
 )
 from downscaling.regression import get_gam_initial_values
-from downscaling.scores import summarize_distribution_metrics, smad_exponential_margins
-from downscaling.egpd import egpd_left_censored_nll_sum
+from downscaling.utils import make_param_grid
+from downscaling.scores import score_one_prediction_table
+from downscaling.prediction import fit_predict_nn_test
+
+from downscaling.paths import OUT_DIR
+from downscaling.config import (
+    LAMBDA_PROP_KAPPA_GT2,
+    LAMBDA_EXCESS_KAPPA,
+    QUANTILES_FOR_DIAGNOSTICS,
+)
+
 
 def tune_nn_on_outer_train(
     df_model: pd.DataFrame,
@@ -29,7 +38,7 @@ def tune_nn_on_outer_train(
     inner_split = make_single_split_from_train(
         df_outer_train,
         train_frac=0.8,
-        block="30D",
+        block="15D",
         seed=seed + 100,
     )
 
@@ -47,6 +56,8 @@ def tune_nn_on_outer_train(
         "xi_init",
         "censor_threshold",
         "init_source",
+        "kappa_max_nn",
+        "lambda_kappa",
     ]
 
     common_values = [param_grid[k] for k in common_keys]
@@ -154,6 +165,8 @@ def tune_nn_on_outer_train(
                 device=device,
                 weight_decay=float(params_variant["weight_decay"]),
                 return_history=True,
+                kappa_max_nn=float(params_variant["kappa_max_nn"]),
+                lambda_kappa=float(params_variant["lambda_kappa"]),
             )
 
             history = res.get("history", None)
@@ -177,6 +190,7 @@ def tune_nn_on_outer_train(
                 f"censor={float(params_variant['censor_threshold']):.3f} | "
                 f"valid_loss={res['valid_loss']:.4f} | "
                 f"train_loss={res['train_loss']:.4f} | "
+                f"best_epoch={res['best_epoch']:.4f} | "
                 f"stopped_epoch={res['stopped_epoch']}"
             )
 
@@ -190,6 +204,7 @@ def tune_nn_on_outer_train(
             "valid_loss",
             "train_loss",
             "n_covariates",
+            "best_epoch",
             "stopped_epoch",
         ]
     ).reset_index(drop=True)
@@ -215,7 +230,7 @@ def rerank_top_nn_configs(
     inner_split = make_single_split_from_train(
         df_outer_train,
         train_frac=0.8,
-        block="30D",
+        block="15D",
         seed=seed + 100,
     )
 
@@ -252,6 +267,8 @@ def rerank_top_nn_configs(
             device=device,
             weight_decay=float(params.get("weight_decay", 0.0)),
             return_history=True,
+            kappa_max_nn=float(params["kappa_max_nn"]),
+            lambda_kappa=float(params["lambda_kappa"]),
         )
 
         history = res.get("history", None)
@@ -300,3 +317,124 @@ def rerank_top_nn_configs(
     best_history = histories.get(best_rerank_id, None)
 
     return rerank_df, best_params, best_history
+
+
+
+# Tuning and final LOSO fitting
+def select_tuning_stations(
+    df: pd.DataFrame,
+    stations: list[str],
+    station_col: str,
+    n_tuning_stations: int = 5,
+) -> list[str]:
+    station_summary = (
+        df.groupby(station_col)
+        .agg(
+            n=("Y_obs", "size"),
+            rain_freq=("Y_obs", lambda x: float(np.mean(x > 0))),
+            y_q95=("Y_obs", lambda x: float(np.nanquantile(x, 0.95))),
+            y_max=("Y_obs", "max"),
+        )
+        .reset_index()
+    )
+
+    station_summary = station_summary[station_summary[station_col].isin(stations)].copy()
+    station_summary = station_summary.sort_values("rain_freq")
+    station_summary.to_csv(OUT_DIR / "station_summary_for_tuning_selection.csv", index=False)
+
+    if len(station_summary) <= n_tuning_stations:
+        return station_summary[station_col].tolist()
+
+    idx = np.linspace(0, len(station_summary) - 1, n_tuning_stations).round().astype(int)
+    return station_summary.iloc[idx][station_col].tolist()
+
+
+def tune_nn_loso(
+    df_model: pd.DataFrame,
+    stations_for_tuning: list[str],
+    station_col: str,
+    x_sets: dict,
+    param_grid: dict,
+    seed: int = 2026,
+    device=None,
+) -> tuple[pd.DataFrame, dict]:
+    configs = make_param_grid(param_grid)
+    rows = []
+
+    print("\nStarting LOSO hyperparameter tuning")
+    print("Tuning stations:", stations_for_tuning)
+    print("Number of NN configurations:", len(configs))
+
+    for cfg_id, params in enumerate(configs, start=1):
+        print(f"\nConfig {cfg_id}/{len(configs)}")
+        print(params)
+
+        preds_cfg = []
+        failed = False
+
+        for j, station in enumerate(stations_for_tuning, start=1):
+            print(f"  Tuning fold {j}/{len(stations_for_tuning)}: left-out station = {station}")
+
+            df_train = df_model[df_model[station_col] != station].copy()
+            df_valid = df_model[df_model[station_col] == station].copy()
+
+            if len(df_valid) < 20:
+                print(f"  Skipping {station}: too few observations.")
+                continue
+
+            try:
+                _row, pred, _fit = fit_predict_nn_test(
+                    df_train_valid=df_train,
+                    df_test=df_valid,
+                    x_sets=x_sets,
+                    best_params=params,
+                    seed=seed + 1000 * cfg_id + j,
+                    device=device,
+                )
+            except Exception as e:
+                print(f"  Failed for station {station}: {e}")
+                failed = True
+                break
+
+            pred["model"] = "NN"
+            pred["left_out_station"] = station
+            preds_cfg.append(pred)
+
+        if failed or len(preds_cfg) == 0:
+            rows.append({"config_id": cfg_id, **params, "failed": True, "selection_score": np.inf})
+            continue
+
+        pred_cfg_all = pd.concat(preds_cfg, ignore_index=True, sort=False)
+        pred_cfg_all = add_prediction_quantities(pred_cfg_all, quantiles=QUANTILES_FOR_DIAGNOSTICS)
+
+        scores = score_one_prediction_table(pred_cfg_all, alpha=1.0)
+        selection_score = (
+            scores["twcrps_sum"]
+            + LAMBDA_PROP_KAPPA_GT2 * scores["prop_kappa_gt_2"]
+            + LAMBDA_EXCESS_KAPPA * scores["kappa_excess_mean"]
+        )
+
+        rows.append({
+            "config_id": cfg_id,
+            **params,
+            "failed": False,
+            **scores,
+            "selection_score": selection_score,
+        })
+
+        print(
+            f"  selection_score={selection_score:.6g} | "
+            f"twCRPS_sum={scores['twcrps_sum']:.6g} | "
+            f"twCRPS_mean={scores['twcrps_mean']:.6g} | "
+            f"kappa_q99={scores['kappa_q99']:.3f} | "
+            f"prop(kappa>2)={scores['prop_kappa_gt_2']:.3f}"
+        )
+
+    tuning_df = pd.DataFrame(rows).sort_values("selection_score").reset_index(drop=True)
+    best_row = tuning_df.iloc[0].to_dict()
+    best_params = {k: best_row[k] for k in param_grid.keys()}
+
+    if isinstance(best_params.get("widths"), str):
+        best_params["widths"] = eval(best_params["widths"])
+
+    return tuning_df, best_params

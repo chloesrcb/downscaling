@@ -109,6 +109,9 @@ def run_one_nn_variant(
     patience: int = 25,
     warmup_epochs: int = 20,
     weight_decay: float = 0.0,
+    min_delta: float = 0,
+    kappa_max_nn: float = 1.5,
+    lambda_kappa: float = 0.05,
 ):
     check_variant(variant)
 
@@ -155,9 +158,11 @@ def run_one_nn_variant(
         device=device,
         early_stopping=early_stopping,
         patience=patience,
-        min_delta=0.0,
+        min_delta=min_delta,
         warmup_epochs=warmup_epochs,
         censor_threshold=censor_threshold,
+        kappa_max_nn=kappa_max_nn,
+        lambda_kappa=lambda_kappa,
     )
 
     sig = inspect.signature(train_egpd_nn_only)

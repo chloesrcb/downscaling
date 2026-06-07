@@ -1,7 +1,9 @@
-import re
 import ast
 import numpy as np
+from itertools import product
+from downscaling.plotting import pretty_predictor_name
 
+STATION_COL_CANDIDATES = ["site", "station", "station_name", "gauge", "name_Y", "site_Y"]
 
 def parse_widths(x):
     """
@@ -34,41 +36,24 @@ def safe_model_name(name: str) -> str:
 
 def pretty_covariate_name(name: str) -> str:
     """Convert technical covariate names into readable labels for plots."""
-    m = re.match(r"^X_p(\d{2})_dt(-1h|0h|\+1h)$", name)
-    if m is not None:
-        pixel = int(m.group(1))
-        lag = m.group(2)
-
-        if lag == "0h":
-            lag_label = "t"
-        elif lag == "-1h":
-            lag_label = "t - 1 h"
-        elif lag == "+1h":
-            lag_label = "t + 1 h"
-        else:
-            lag_label = lag
-
-        return f"Radar grid cell {pixel}, {lag_label}"
-
-    replacements = {
-        "radar_max": "Radar maximum",
-        "radar_mean": "Radar mean",
-        "radar_sum": "Radar sum",
-        "tod_sin": "Time of day, sine",
-        "tod_cos": "Time of day, cosine",
-        "doy_sin": "Day of year, sine",
-        "doy_cos": "Day of year, cosine",
-        "month_sin": "Month, sine",
-        "month_cos": "Month, cosine",
-        "lat_Y": "Gauge latitude",
-        "lon_Y": "Gauge longitude",
-        "lat_X": "Radar cell latitude",
-        "lon_X": "Radar cell longitude",
-        "Y_obs": r"Gauge rainfall $Y_{obs}$",
-    }
-
-    return replacements.get(name, name)
+    return pretty_predictor_name(name)
 
 
 def add_grid(ax, axis: str = "both"):
     ax.grid(True, axis=axis, alpha=0.3)
+
+
+def find_station_col(df: pd.DataFrame) -> str:
+    for col in STATION_COL_CANDIDATES:
+        if col in df.columns:
+            return col
+    raise ValueError(
+        f"No station column found. Available columns are:\n{df.columns.tolist()}\n"
+        "Please set STATION_COL manually."
+    )
+
+
+def make_param_grid(param_grid: dict) -> list[dict]:
+    keys = list(param_grid.keys())
+    values = [param_grid[k] for k in keys]
+    return [dict(zip(keys, vals)) for vals in product(*values)]
