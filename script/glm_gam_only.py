@@ -12,7 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from downscaling.config import (
+from downscaling.settings import (
     KAPPA_INIT,
     SIGMA_INIT,
     SINGLE_COV_COL,
@@ -33,13 +33,13 @@ from downscaling.diagnostics import (
     plot_tail_exceedance_calibration,
     summarize_model_comparison,
 )
-from downscaling.paths import (
+from downscaling.settings import (
     DOWNSCALING_TABLE,
     IM_FOLDER,
     make_output_dirs,
 )
 from downscaling.plotting import RESPONSE_LABEL, configure_plot_style, save_png
-from downscaling.splits import (
+from downscaling.data import (
     make_blocked_cv_splits,
     make_train_valid_test_split,
 )

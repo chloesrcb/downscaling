@@ -8,7 +8,7 @@ from downscaling.egpd import (
     egpd_left_censored_nll_sum,
 )
 
-from downscaling.config import CENSOR_THRESHOLD, XI_INIT, SIGMA_INIT, KAPPA_INIT, ALLOWED_VARIANTS
+from downscaling.settings import CENSOR_THRESHOLD, XI_INIT, SIGMA_INIT, KAPPA_INIT, ALLOWED_VARIANTS
 
 
 def check_variant(variant: str):

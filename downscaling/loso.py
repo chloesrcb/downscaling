@@ -1,6 +1,6 @@
 
 from typing import Dict, Any
-from downscaling.config import (
+from downscaling.settings import (
     DEVICE,
     QUANTILES_FOR_DIAGNOSTICS,
     REFERENCE_MODEL,
@@ -9,8 +9,8 @@ from downscaling.prediction import (
     fit_predict_nn_test,
     fit_predict_regression_test,
     fit_predict_stationary_test,
-    add_prediction_quantities,
 )
+from downscaling.diagnostics import add_prediction_quantities
 
 import pandas as pd
 

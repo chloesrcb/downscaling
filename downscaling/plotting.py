@@ -8,9 +8,6 @@ import pandas as pd
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 
-
-from .config import OUT_DIR
-
 PROBS_QQ = np.concatenate([
     np.linspace(0.01, 0.90, 90),
     np.linspace(0.91, 0.99, 18),
@@ -18,11 +15,9 @@ PROBS_QQ = np.concatenate([
 ])
 
 import matplotlib.pyplot as plt
-from downscaling.config import MODEL_ORDER, MODEL_ORDER_NO_REF, REFERENCE_MODEL
-from downscaling.scores import compute_pit, transformed_exponential_pit
+from downscaling.settings import MODEL_ORDER, MODEL_ORDER_NO_REF, REFERENCE_MODEL
 
 from downscaling.egpd import qegpd
-from downscaling.diagnostics import add_radar_tercile_group
 
 
 
@@ -47,12 +42,14 @@ PALETTE = {
     "twCRPS": "#008080",
     "CRPSS": "#D45087",
     "twCRPSS": "#008080",
+    "darkred": "#8B0000",
 }
 
 SCORE_LABELS = {
-    "twcrps_sum": "Tail-weighted CRPS",
-    "twcrps_mean": "Tail-weighted CRPS mean",
+    "twcrps_sum": "twCRPS",
+    "twcrps_mean": "Mean twCRPS",
     "crps_mean": "Mean CRPS",
+    "crps_sum": "CRPS",
     "smad": "sMAD",
     "pit_cvm": "PIT CvM",
     "kappa_q99": r"99th percentile of $\kappa$",
@@ -61,9 +58,27 @@ SCORE_LABELS = {
     "twcrps_skill": "SS twCRPS",
 }
 
+import matplotlib.colors as mcolors
+RAIN_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    "rain_blue",
+    ["#F7FBFF", "#DEEBF7", "#9ECAE1", "#4292C6", "#08519C"],
+    N=256,
+)
 
-def savefig(fig, name: str) -> None:
-    save_png(fig, OUT_DIR / name)
+DRY_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    "dry_orange",
+    ["#FFF7EC", "#FDD49E", "#FDBB84", "#EF6548", "#990000"],
+    N=256,
+)
+
+PARAM_CMAP = mcolors.LinearSegmentedColormap.from_list(
+    "param_purple",
+    ["#F7FCFD", "#E0ECF4", "#BFD3E6", "#9EBCDA", "#8C96C6", "#88419D"],
+    N=256,
+)
+
+def savefig(fig, name: str, out_dir: Path) -> None:
+    save_png(fig, out_dir / name)
 
 def configure_plot_style() -> None:
     """Apply a clean style for saved figures."""
@@ -130,10 +145,10 @@ def pretty_predictor_name(name: str) -> str:
         "radar_max": r"$\max(\mathbf{C}^{\mathrm{cube}}_{\mathbf{s},t})$",
         "radar_mean": r"$\mathrm{mean}(\mathbf{C}^{\mathrm{cube}}_{\mathbf{s},t})$",
         "radar_sum": r"$\sum \mathbf{C}^{\mathrm{cube}}_{\mathbf{s},t}$",
-        "radar_max_dt0h": r"$\max_j C_{j,0}(\mathbf{s},t)$",
-        "radar_mean_dt0h": r"$\mathrm{mean}_j C_{j,0}(\mathbf{s},t)$",
-        "radar_sum_dt0h": r"$\sum_j C_{j,0}(\mathbf{s},t)$",
-        "radar_central_dt0h": r"$C_{\mathrm{central},0}(\mathbf{s},t)$",
+        "radar_max_dt0h": r"$\max C_{j,0}(\mathbf{s},t)$",
+        "radar_mean_dt0h": r"$\mathrm{mean} C_{j,0}(\mathbf{s},t)$",
+        "radar_sum_dt0h": r"$\sum C_{j,0}(\mathbf{s},t)$",
+        # "radar_central_dt0h": r"$C_{\mathrm{central},0}(\mathbf{s},t)$",
         "tod_sin": "Time of day, sine",
         "tod_cos": "Time of day, cosine",
         "doy_sin": "Day of year, sine",
@@ -176,7 +191,7 @@ def model_color(model: str) -> str:
 
 
 # Plotting score summaries
-def plot_loso_score_boxplot(score_df: pd.DataFrame, score_col: str) -> None:
+def plot_loso_score_boxplot(score_df: pd.DataFrame, score_col: str, out_dir: Path) -> None:
     plot_df = score_df.copy()
     plot_df["model_short"] = plot_df["model"].map(compact_model_name)
     models = [compact_model_name(m) for m in MODEL_ORDER if compact_model_name(m) in plot_df["model_short"].unique()]
@@ -199,7 +214,7 @@ def plot_loso_score_boxplot(score_df: pd.DataFrame, score_col: str) -> None:
     ax.grid(True, axis="y", alpha=0.3)
     plt.xticks(rotation=25, ha="right")
     plt.tight_layout()
-    savefig(fig, f"loso_boxplot_{score_col}.png")
+    savefig(fig, f"loso_boxplot_{score_col}.png", out_dir=out_dir)
     plt.show()
 
 
@@ -207,6 +222,7 @@ def plot_skill_score_boxplots(
     skill_df: pd.DataFrame,
     skill_cols: list[str] | None = None,
     filename: str = "loso_skill_score_boxplots.png",
+    out_dir: Path = Path("."),
 ) -> None:
     if skill_cols is None:
         skill_cols = ["crps_skill", "twcrps_skill"]
@@ -244,7 +260,7 @@ def plot_skill_score_boxplots(
         ax.grid(True, axis="y", alpha=0.3)
 
     plt.tight_layout()
-    savefig(fig, filename)
+    savefig(fig, filename, out_dir=out_dir)
     plt.show()
 
 
@@ -252,6 +268,7 @@ def plot_skill_score_heatmap(
     skill_df: pd.DataFrame,
     skill_col: str = "twcrps_skill",
     filename: str = "loso_twcrps_skill_heatmap_by_site.png",
+    out_dir: Path = Path("."),
 ) -> None:
     d = skill_df[skill_df["model"] != REFERENCE_MODEL].copy()
 
@@ -286,13 +303,14 @@ def plot_skill_score_heatmap(
                 ax.text(j, i, f"{val:.2f}", ha="center", va="center", fontsize=8, color="#222222")
 
     plt.tight_layout()
-    savefig(fig, filename)
+    savefig(fig, filename, out_dir=out_dir)
     plt.show()
 
 
 def plot_global_score_and_skill_summary(
     global_scores_skill: pd.DataFrame,
     filename: str = "loso_global_score_and_skill_summary.png",
+    out_dir: Path = Path(".")
 ) -> None:
     d = global_scores_skill.copy()
     d["model_short"] = d["model"].map(compact_model_name)
@@ -358,12 +376,15 @@ def plot_global_score_and_skill_summary(
     axes[1].legend()
 
     plt.tight_layout()
-    savefig(fig, filename)
+    savefig(fig, filename, out_dir=out_dir)
     plt.show()
 
 
 # Plotting PIT, QQ, simulation diagnostics
-def plot_pit_histogram(pred_df: pd.DataFrame, model: str) -> None:
+def plot_pit_histogram(pred_df: pd.DataFrame, model: str, 
+                       out_dir: Path = Path(".")) -> None:
+    from downscaling.scores import compute_pit
+
     d = pred_df[pred_df["model"] == model].copy()
     pit = compute_pit(d)
 
@@ -374,11 +395,14 @@ def plot_pit_histogram(pred_df: pd.DataFrame, model: str) -> None:
     ax.set_ylabel("Density")
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
-    savefig(fig, f"loso_pit_histogram_{compact_model_name(model)}.png")
+    savefig(fig, f"loso_pit_histogram_{compact_model_name(model)}.png", out_dir=out_dir)
     plt.show()
 
 
-def plot_exponential_qq_all_models(pred_df: pd.DataFrame) -> None:
+def plot_exponential_qq_all_models(pred_df: pd.DataFrame, 
+                                   out_dir: Path = Path(".")) -> None:
+    from downscaling.scores import transformed_exponential_pit
+
     fig, ax = plt.subplots(figsize=(7, 7))
 
     for model in [m for m in MODEL_ORDER if m in pred_df["model"].unique()]:
@@ -407,21 +431,27 @@ def plot_exponential_qq_all_models(pred_df: pd.DataFrame) -> None:
     ax.grid(True, alpha=0.3)
     ax.legend()
     plt.tight_layout()
-    savefig(fig, "loso_exponential_qq_all_models.png")
+    savefig(fig, "loso_exponential_qq_all_models.png", out_dir=out_dir)
     plt.show()
 
 
-def plot_exponential_qq_all_models_by_site(pred_df: pd.DataFrame, site: str) -> None:
+def plot_exponential_qq_all_models_zoom(
+    pred_df: pd.DataFrame,
+    pmin_zoom: float = 0.90,
+    out_dir: Path = Path(".")
+) -> None:
+    from downscaling.scores import transformed_exponential_pit
+
+    probs_zoom = PROBS_QQ[PROBS_QQ >= pmin_zoom]
+
     fig, ax = plt.subplots(figsize=(7, 7))
 
     for model in [m for m in MODEL_ORDER if m in pred_df["model"].unique()]:
-        d = pred_df[(pred_df["model"] == model) & (pred_df["left_out_station"] == site)].copy()
-        if len(d) < 20:
-            continue
-
+        d = pred_df[pred_df["model"] == model].copy()
         z = transformed_exponential_pit(d)
-        q_obs = np.quantile(z, PROBS_QQ)
-        q_exp = -np.log(1 - PROBS_QQ)
+
+        q_obs = np.quantile(z, probs_zoom)
+        q_exp = -np.log(1 - probs_zoom)
 
         ax.plot(
             q_obs,
@@ -434,17 +464,96 @@ def plot_exponential_qq_all_models_by_site(pred_df: pd.DataFrame, site: str) -> 
             alpha=0.9,
         )
 
-    lim = max(ax.get_xlim()[1], ax.get_ylim()[1])
-    ax.plot([0, lim], [0, lim], linestyle="--", linewidth=1.2, color="#8B0000")
-    ax.set_xlim(0, lim)
-    ax.set_ylim(0, lim)
-    ax.set_xlabel("Transformed PIT quantiles")
+    lim_min = min(ax.get_xlim()[0], ax.get_ylim()[0])
+    lim_max = max(ax.get_xlim()[1], ax.get_ylim()[1])
+
+    ax.plot(
+        [lim_min, lim_max],
+        [lim_min, lim_max],
+        linestyle="--",
+        linewidth=1.2,
+        color="#8B0000",
+    )
+
+    ax.set_xlim(lim_min, lim_max)
+    ax.set_ylim(lim_min, lim_max)
+
+    ax.set_xlabel(f"Transformed PIT quantiles, p ≥ {pmin_zoom}")
     ax.set_ylabel("Theoretical exponential quantiles")
     ax.grid(True, alpha=0.3)
     ax.legend()
+
     plt.tight_layout()
-    savefig(fig, f"loso_exponential_qq_all_models_site_{site}.png")
+    savefig(fig, f"loso_exponential_qq_all_models_zoom_p{int(100*pmin_zoom)}.png", out_dir=out_dir)
     plt.show()
+
+
+def plot_exponential_qq_all_models_by_site(
+    pred_df: pd.DataFrame,
+    site: str,
+    pmin_zoom: float = 0.90,
+    out_dir: Path = Path(".")
+) -> None:
+    from downscaling.scores import transformed_exponential_pit
+
+    probs_zoom = PROBS_QQ[PROBS_QQ >= pmin_zoom]
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+
+    for model in [m for m in MODEL_ORDER if m in pred_df["model"].unique()]:
+        d = pred_df[
+            (pred_df["model"] == model)
+            & (pred_df["left_out_station"] == site)
+        ].copy()
+
+        if len(d) < 20:
+            continue
+
+        z = transformed_exponential_pit(d)
+
+        q_obs = np.quantile(z, probs_zoom)
+        q_exp = -np.log(1 - probs_zoom)
+
+        ax.plot(
+            q_obs,
+            q_exp,
+            marker="o",
+            markersize=3,
+            linewidth=1.2,
+            label=compact_model_name(model),
+            color=model_color(model),
+            alpha=0.9,
+        )
+
+    lim_min = min(ax.get_xlim()[0], ax.get_ylim()[0])
+    lim_max = max(ax.get_xlim()[1], ax.get_ylim()[1])
+
+    ax.plot(
+        [lim_min, lim_max],
+        [lim_min, lim_max],
+        linestyle="--",
+        linewidth=1.2,
+        color="#8B0000",
+    )
+
+    ax.set_xlim(lim_min, lim_max)
+    ax.set_ylim(lim_min, lim_max)
+
+    ax.set_xlabel(f"Transformed PIT quantiles, p ≥ {pmin_zoom}")
+    ax.set_ylabel("Theoretical exponential quantiles")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    plt.tight_layout()
+    savefig(
+        fig,
+        f"loso_exponential_qq_all_models_site_{site}_zoom_p{int(100*pmin_zoom)}.png",
+        out_dir=out_dir
+    )
+    plt.show()
+
+
+
 
 
 def plot_exponential_qq_all_models_by_radar_tercile(
@@ -453,6 +562,9 @@ def plot_exponential_qq_all_models_by_radar_tercile(
     use_dt0h_only: bool = True,
     radar_summary: str = "mean",
 ) -> None:
+    from downscaling.diagnostics import add_radar_tercile_group
+    from downscaling.scores import transformed_exponential_pit
+
     tercile_order = ["Low radar", "Medium radar", "High radar"]
 
     for tercile in tercile_order:
@@ -497,7 +609,7 @@ def plot_exponential_qq_all_models_by_radar_tercile(
         plt.tight_layout()
 
         tercile_name = str(tercile).replace(" ", "_").replace("-", "_").lower()
-        savefig(fig, f"loso_exponential_qq_all_models_site_{site}_{tercile_name}.png")
+        savefig(fig, f"loso_exponential_qq_all_models_site_{site}_{tercile_name}.png", out_dir=out_dir)
         plt.show()
 
 
@@ -506,6 +618,7 @@ def plot_observed_vs_simulated_density(
     model: str,
     n_sim_per_obs: int = 50,
     seed: int = 123,
+    out_dir: Path = Path(".")
 ) -> None:
     rng = np.random.default_rng(seed)
     d = pred_df[pred_df["model"] == model].copy()
@@ -530,7 +643,7 @@ def plot_observed_vs_simulated_density(
     ax.grid(True, alpha=0.3)
     ax.legend()
     plt.tight_layout()
-    savefig(fig, f"loso_observed_vs_simulated_{compact_model_name(model)}.png")
+    savefig(fig, f"loso_observed_vs_simulated_{compact_model_name(model)}.png", out_dir=out_dir)
     plt.show()
 
 
@@ -539,6 +652,7 @@ def plot_survival_observed_vs_simulated(
     model: str,
     n_sim_per_obs: int = 50,
     seed: int = 123,
+    out_dir: Path = Path(".")
 ) -> None:
     rng = np.random.default_rng(seed)
     d = pred_df[pred_df["model"] == model].copy()
@@ -565,16 +679,89 @@ def plot_survival_observed_vs_simulated(
     ax.grid(True, alpha=0.3)
     ax.legend()
     plt.tight_layout()
-    savefig(fig, f"loso_survival_{compact_model_name(model)}.png")
+    savefig(fig, f"loso_survival_{compact_model_name(model)}.png", out_dir=out_dir)
     plt.show()
 
 
+def plot_survival_observed_vs_all_models(
+    pred_df: pd.DataFrame,
+    models: list[str] | None = None,
+    n_sim_per_obs: int = 50,
+    seed: int = 123,
+    out_dir: Path = Path(".")
+) -> None:
+    rng = np.random.default_rng(seed)
+
+    if models is None:
+        models = list(pred_df["model"].unique())
+
+    # Observations: same for all models, take first model subset
+    d0 = pred_df[pred_df["model"] == models[0]].copy()
+    y_obs = d0["Y_obs"].to_numpy(float)
+
+    y_grid = np.quantile(
+        y_obs[y_obs > 0],
+        np.linspace(0.50, 0.995, 80)
+    )
+
+    surv_obs = np.array([(y_obs > yy).mean() for yy in y_grid])
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    
+    ax.plot(
+        y_grid,
+        surv_obs,
+        marker="o",
+        markersize=3,
+        linewidth=1.5,
+        label="Observed",
+        color="black",
+    )
+
+    for model in models:
+        d = pred_df[pred_df["model"] == model].copy()
+
+        u = rng.uniform(size=(len(d), n_sim_per_obs))
+
+        y_sim = qegpd(
+            prob=u,
+            sigma=d["sigma"].to_numpy(float)[:, None],
+            kappa=d["kappa"].to_numpy(float)[:, None],
+            xi=d["xi"].to_numpy(float)[:, None],
+        ).ravel()
+
+        surv_sim = np.array([(y_sim > yy).mean() for yy in y_grid])
+        line_styles = {
+            "NN": "-",
+            "GAM": "--",
+            "GLM": "-.",
+            "Stationary": ":",
+        }
+        ax.plot(
+            y_grid,
+            surv_sim,
+            linewidth=2,
+            linestyle=line_styles.get(compact_model_name(model), "-"),
+            color=model_color(model),
+            label=compact_model_name(model),
+        )
+
+    ax.set_yscale("log")
+    ax.set_xlabel(POSITIVE_RESPONSE_LABEL)
+    ax.set_ylabel("Survival probability")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    plt.tight_layout()
+
+    savefig(fig, "loso_survival_all_models.png", out_dir=out_dir)
+    plt.show()
 
 def plot_parameter_boxplots_combined(
     pred_df: pd.DataFrame,
     models: list[str] = ["GLM", "GAM", "NN"],
     params: tuple[str, str] = ("sigma", "kappa"),
     show_outliers: bool = False,
+    out_dir: Path = Path(".")
 ) -> None:
 
     data_by_param = {p: [] for p in params}
@@ -643,5 +830,176 @@ def plot_parameter_boxplots_combined(
     plt.tight_layout()
 
     models_str = "_".join([compact_model_name(m) for m in models]).lower()
-    savefig(fig, f"loso_parameter_boxplots_combined_{models_str}.png")
+    savefig(fig, f"loso_parameter_boxplots_combined_{models_str}.png", out_dir=out_dir)
     plt.show()
+
+
+def pivot_grid(summary: pd.DataFrame, value_col: str) -> pd.DataFrame:
+    dat = summary[["x_l93", "y_l93", value_col]].copy()
+    dat = dat.replace([np.inf, -np.inf], np.nan)
+    dat = dat.dropna(subset=["x_l93", "y_l93", value_col])
+
+    return (
+        dat.pivot_table(
+            index="y_l93",
+            columns="x_l93",
+            values=value_col,
+            aggfunc="mean",
+            dropna=False,
+        )
+        .sort_index()
+        .sort_index(axis=1)
+    )
+
+
+def cell_edges_from_centres(v: np.ndarray, grid_res_m: float = None) -> np.ndarray:
+    v = np.sort(np.unique(np.asarray(v, dtype=float)))
+
+    if len(v) == 1:
+        return np.array([v[0] - grid_res_m / 2, v[0] + grid_res_m / 2])
+
+    mids = (v[:-1] + v[1:]) / 2
+
+    return np.r_[
+        v[0] - (v[1] - v[0]) / 2,
+        mids,
+        v[-1] + (v[-1] - v[-2]) / 2,
+    ]
+
+
+def get_scale(values: np.ndarray, scale: dict | None):
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+
+    if len(values) == 0:
+        return np.nan, np.nan
+
+    if scale is None:
+        scale = {"mode": "quantile", "qmin": 0.02, "qmax": 0.98}
+
+    mode = scale.get("mode", "quantile")
+
+    if mode == "fixed":
+        vmin = scale.get("vmin", np.nanmin(values))
+        vmax = scale.get("vmax", np.nanmax(values))
+
+    elif mode == "minmax":
+        vmin = np.nanmin(values)
+        vmax = np.nanmax(values)
+
+    elif mode == "positive_quantile":
+        vmin = scale.get("vmin", 0.0)
+        vmax = np.nanquantile(values, scale.get("qmax", 0.98))
+
+    elif mode == "quantile":
+        vmin = np.nanquantile(values, scale.get("qmin", 0.02))
+        vmax = np.nanquantile(values, scale.get("qmax", 0.98))
+
+    else:
+        raise ValueError(f"Unknown scale mode: {mode}")
+
+    if not np.isfinite(vmin) or not np.isfinite(vmax):
+        vmin, vmax = np.nanmin(values), np.nanmax(values)
+
+    if vmin == vmax:
+        eps = max(abs(vmin) * 0.05, 1e-6)
+        vmin -= eps
+        vmax += eps
+
+    return vmin, vmax
+
+from matplotlib.ticker import FormatStrFormatter
+
+def plot_heatmap(
+    summary: pd.DataFrame,
+    value_col: str,
+    label: str,
+    filename: str,
+    cmap=RAIN_CMAP,
+    scale: dict | None = None,
+    add_gauges: bool = True,
+    out_dir: Path = None,
+    gauges_plot: pd.DataFrame = None,
+    grid_res_m: float = None,
+    display_factor: float = 1.0,
+    cbar_format: str | None = None,
+) -> None:
+    pivot = pivot_grid(summary, value_col)
+
+    if pivot.empty:
+        print(f"[skip] {value_col}: empty map")
+        return
+
+    raw_values = pivot.values.astype(float) * display_factor
+    vmin, vmax = get_scale(raw_values, scale)
+
+    print(f"\nPlot {value_col}")
+    print((summary[value_col] * display_factor).describe())
+    print("scale:", vmin, vmax)
+
+    x_edges = cell_edges_from_centres(pivot.columns.to_numpy(float), grid_res_m=grid_res_m)
+    y_edges = cell_edges_from_centres(pivot.index.to_numpy(float), grid_res_m=grid_res_m)
+
+    fig, ax = plt.subplots(figsize=(8, 7))
+
+    im = ax.pcolormesh(
+        x_edges,
+        y_edges,
+        np.ma.masked_invalid(raw_values),
+        cmap=cmap,
+        vmin=vmin,
+        vmax=vmax,
+        shading="flat",
+    )
+
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label(label)
+
+    if cbar_format is not None:
+        cbar.ax.yaxis.set_major_formatter(FormatStrFormatter(cbar_format))
+
+    if add_gauges:
+        ax.scatter(
+            gauges_plot["x_l93"],
+            gauges_plot["y_l93"],
+            s=35,
+            c=PALETTE["darkred"],
+            edgecolor="white",
+            linewidth=0.5,
+            zorder=5,
+        )
+
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    ax.set_title("")
+    ax.set_aspect("equal", adjustable="box")
+
+    fig.tight_layout()
+    savefig(fig, filename, out_dir=out_dir)
+    plt.show()
+
+def plot_summary_set(summary: pd.DataFrame, prefix: str, map_specs: list[dict], out_dir: Path, 
+                     gauges_plot: pd.DataFrame = None, grid_res_m: float = None) -> None:
+    for spec in map_specs:
+        col = spec["col"]
+
+        if col not in summary.columns:
+            print(f"[skip] {col}: missing column")
+            continue
+
+        plot_heatmap(
+            summary=summary,
+            value_col=col,
+            label=spec["label"],
+            filename=f"map_{prefix}_{spec['name']}.png",
+            cmap=spec.get("cmap", RAIN_CMAP),
+            scale=spec.get("scale"),
+            add_gauges=spec.get("add_gauges", True),
+            out_dir=out_dir,
+            gauges_plot=gauges_plot,
+            grid_res_m=grid_res_m,
+            display_factor=spec.get("display_factor", 1.0),
+            cbar_format=spec.get("cbar_format"),
+        )

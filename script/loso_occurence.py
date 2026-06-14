@@ -10,9 +10,9 @@ import matplotlib.pyplot as plt
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from downscaling.paths import DOWNSCALING_TABLE, IM_FOLDER
+from downscaling.settings import DOWNSCALING_TABLE, IM_FOLDER
 from downscaling.plotting import configure_plot_style, save_png
-from downscaling.features import standardize_train_only
+from downscaling.data import standardize_train_only
 from downscaling.occurrence import (
     prepare_occurrence_dataframe,
     build_Xy_occurrence,
@@ -20,7 +20,7 @@ from downscaling.occurrence import (
     predict_occurrence_probability,
     plot_loss_history,
 )
-from downscaling.occurrence_metrics import (
+from downscaling.occurrence import (
     evaluate_occurrence_predictions,
     plot_validation_summary,
     plot_roc_curve,
@@ -32,7 +32,7 @@ OUT_DIR = Path(IM_FOLDER) / "leave_one_site_out_occurrence"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 SEED = 2026
-BLOCK = "15D"
+# BLOCK = "15D"
 
 STATION_COL_CANDIDATES = [
     "site", "station", "station_name", "gauge",
@@ -67,7 +67,6 @@ def calibration_table(y, p, n_bins=10):
         .reset_index()
     )
 
-
 def summarize_metrics(name, y, p, p_base, n_params, station):
     m = evaluate_occurrence_predictions(
         y_true=y,
@@ -87,6 +86,8 @@ def summarize_metrics(name, y, p, p_base, n_params, station):
         calib_bins=10,
     )
 
+    brier_skill_score = 1 - m["brier"] / mb["brier"]
+
     return {
         "left_out_station": station,
         "split": name,
@@ -96,6 +97,8 @@ def summarize_metrics(name, y, p, p_base, n_params, station):
         "brier_model": m["brier"],
         "brier_baseline": mb["brier"],
         "brier_gain": mb["brier"] - m["brier"],
+        "brier_skill_score": brier_skill_score,
+        "brier_skill_score_pct": 100 * brier_skill_score,
         "logloss_model": m["logloss"],
         "logloss_baseline": mb["logloss"],
         "logloss_gain": mb["logloss"] - m["logloss"],
@@ -138,12 +141,15 @@ def plot_reliability_curve(y, p, station, filename, n_bins=10):
 df_raw = pd.read_csv(DOWNSCALING_TABLE, sep=";")
 df_raw["time"] = pd.to_datetime(df_raw["time"], utc=True)
 
+#%%
 df_occ, x_cols27, x_cols = prepare_occurrence_dataframe(
     df_raw,
     use_time=True,
     use_spatial=True,
     use_summaries=True,
-    use_cube=True,
+    use_cube=False,
+    remove_incoherent=False,
+    summary_scale="raw", 
 )
 
 df_occ["is_rain"] = (df_occ["Y_obs"] > 0).astype(int)
@@ -154,6 +160,17 @@ print("Using station column:", STATION_COL)
 stations = sorted(df_occ[STATION_COL].dropna().unique())
 print("Number of stations:", len(stations))
 print(stations)
+
+#%% 
+# # check nb site>0 given all radar values are 0
+# total_pos_site_zero_radar = 0
+# for station in stations:
+#     idx = df_occ.index[df_occ[STATION_COL] == station]
+#     site_zero_radar = (df_occ.loc[idx, "Y_obs"] > 0) & (df_occ.loc[idx, "radar_sum"] == 0)
+#     n_site_zero_radar = site_zero_radar.sum()
+#     total_pos_site_zero_radar += n_site_zero_radar
+#     print(f"Station {station}: {n_site_zero_radar} cases with Y_obs>0 and X_radar=0")
+# print(f"Total cases with Y_obs>0 and X_radar=0: {total_pos_site_zero_radar}")
 
 # %%
 all_metrics = []
@@ -233,28 +250,6 @@ for i, station in enumerate(stations, start=1):
 
     safe_station = str(station).replace(" ", "_").replace("/", "_")
 
-    plot_prob_distribution(
-        y=y_test,
-        p=p_test,
-        p0=p0_train,
-        station=station,
-        filename=OUT_DIR / f"loso_occurrence_probability_distribution_{safe_station}.png",
-    )
-
-    plot_reliability_curve(
-        y=y_test,
-        p=p_test,
-        station=station,
-        filename=OUT_DIR / f"loso_occurrence_reliability_{safe_station}.png",
-    )
-
-    plot_validation_summary(
-        y_true=y_test,
-        p_pred=p_test,
-        title_prefix=f"LOSO {station}",
-        filename=OUT_DIR / f"loso_occurrence_summary_{safe_station}.png",
-    )
-
     plot_roc_curve(
         y_true=y_test,
         p_pred=p_test,
@@ -279,6 +274,7 @@ df_preds_loso.to_csv(
 print("\nLOSO occurrence metrics by station:")
 print(df_metrics_loso.to_string(index=False))
 
+
 # %%
 summary_loso = pd.DataFrame({
     "n_sites": [df_metrics_loso["left_out_station"].nunique()],
@@ -294,6 +290,10 @@ summary_loso = pd.DataFrame({
     "ece_sd": [df_metrics_loso["ece"].std()],
     "rain_freq_mean": [df_metrics_loso["rain_freq"].mean()],
     "mean_pred_mean": [df_metrics_loso["mean_pred"].mean()],
+    "brier_skill_score_mean": [df_metrics_loso["brier_skill_score"].mean()],
+    "brier_skill_score_sd": [df_metrics_loso["brier_skill_score"].std()],
+    "brier_skill_score_pct_mean": [df_metrics_loso["brier_skill_score_pct"].mean()],
+    "brier_skill_score_pct_sd": [df_metrics_loso["brier_skill_score_pct"].std()],
 })
 
 summary_loso.to_csv(
@@ -304,58 +304,76 @@ summary_loso.to_csv(
 print("\nLOSO occurrence summary:")
 print(summary_loso.to_string(index=False))
 
-# %%
-# Global pooled diagnostics
-
-y_all = df_preds_loso["y_occ"].to_numpy(int)
-p_all = df_preds_loso["p_occ_hat"].to_numpy(float)
-p0_all = float(df_preds_loso["p_occ_baseline"].mean())
-
-plot_prob_distribution(
-    y=y_all,
-    p=p_all,
-    p0=p0_all,
-    station="all stations pooled",
-    filename=OUT_DIR / "loso_occurrence_probability_distribution_pooled.png",
-)
-
-plot_reliability_curve(
-    y=y_all,
-    p=p_all,
-    station="all stations pooled",
-    filename=OUT_DIR / "loso_occurrence_reliability_pooled.png",
-)
-
-plot_validation_summary(
-    y_true=y_all,
-    p_pred=p_all,
-    title_prefix="LOSO pooled",
-    filename=OUT_DIR / "loso_occurrence_summary_pooled.png",
-)
-
-plot_roc_curve(
-    y_true=y_all,
-    p_pred=p_all,
-    filename=OUT_DIR / "loso_occurrence_roc_pooled.png",
-)
-
-# %%
+#%%
 # Boxplots over left-out sites
 
-for col in ["brier_model", "brier_gain", "logloss_model", "logloss_gain", "auc", "ece"]:
+for col in [
+    "auc",
+    "brier_skill_score",
+]:
     fig, ax = plt.subplots(figsize=(5.5, 4))
     ax.boxplot(df_metrics_loso[col].dropna(), showmeans=True)
-    ax.set_ylabel(col)
+
+    if col == "auc":
+        ax.set_ylabel("AUC")
+
+    elif col == "brier_skill_score":
+        ax.set_ylabel("Brier skill score")
+
+        ax.axhline(
+            y=0,
+            color="darkred",
+            linestyle="--",
+            linewidth=1.5
+        )
+
     ax.set_xticks([1])
     ax.set_xticklabels(["LOSO sites"])
     ax.grid(True, axis="y", alpha=0.3)
+
     fig.tight_layout()
     savefig(fig, f"loso_occurrence_boxplot_{col}.png")
     plt.show()
+# %%
+# Global pooled diagnostics
+
+# y_all = df_preds_loso["y_occ"].to_numpy(int)
+# p_all = df_preds_loso["p_occ_hat"].to_numpy(float)
+# p0_all = float(df_preds_loso["p_occ_baseline"].mean())
+
+# plot_prob_distribution(
+#     y=y_all,
+#     p=p_all,
+#     p0=p0_all,
+#     station="all stations pooled",
+#     filename=OUT_DIR / "loso_occurrence_probability_distribution_pooled.png",
+# )
+
+# plot_reliability_curve(
+#     y=y_all,
+#     p=p_all,
+#     station="all stations pooled",
+#     filename=OUT_DIR / "loso_occurrence_reliability_pooled.png",
+# )
+
+# plot_validation_summary(
+#     y_true=y_all,
+#     p_pred=p_all,
+#     title_prefix="LOSO pooled",
+#     filename=OUT_DIR / "loso_occurrence_summary_pooled.png",
+# )
+
+# plot_roc_curve(
+#     y_true=y_all,
+#     p_pred=p_all,
+#     filename=OUT_DIR / "loso_occurrence_roc_pooled.png",
+# )
+
+
+# %%
 
 # %%
 # Observed vs predicted rain frequency by station
-
 plot_df = df_metrics_loso.sort_values("rain_freq").copy()
 x = np.arange(len(plot_df))
 
@@ -373,3 +391,5 @@ savefig(fig, "loso_occurrence_observed_vs_predicted_frequency_by_station.png")
 plt.show()
 
 print("\nDone. Outputs are in:", OUT_DIR)
+
+#%%

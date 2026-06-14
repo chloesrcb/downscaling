@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from downscaling.paths import FIG_DIR, TAB_DIR
-from downscaling.config import RAIN_THRESHOLD_POSITIVE, BUCKET_RESOLUTION, TIME_COLS, SPATIAL_COLS
+from downscaling.settings import FIG_DIR, TAB_DIR
+from downscaling.settings import RAIN_THRESHOLD_POSITIVE, BUCKET_RESOLUTION, TIME_COLS, SPATIAL_COLS
 from downscaling.data import get_x_cols27_downscaling
 from downscaling.plotting import (
     LOG_RESPONSE_LABEL,
@@ -94,13 +94,13 @@ def prepare_analysis_dataframe(df_raw: pd.DataFrame):
     df["radar_sum_dt0h"] = np.nansum(X_block_dt0h, axis=1)
 
     # Central/current pixel 
-    central_col = "X_p01_dt0h"
+    # central_col = "X_p01_dt0h"
 
-    if central_col in df.columns:
-        df["radar_central_dt0h"] = df[central_col].astype(float)
-    else:
-        print(f"Warning: {central_col} not found. Using radar_max_dt0h instead.")
-        df["radar_central_dt0h"] = df["radar_max_dt0h"]
+    # if central_col in df.columns:
+    #     df["radar_central_dt0h"] = df[central_col].astype(float)
+    # else:
+    #     print(f"Warning: {central_col} not found. Using radar_max_dt0h instead.")
+    #     df["radar_central_dt0h"] = df["radar_max_dt0h"]
 
     # Occurrence
     df["gauge_occurrence"] = (df["Y_obs"] > RAIN_THRESHOLD_POSITIVE).astype(int)
@@ -114,13 +114,13 @@ def prepare_analysis_dataframe(df_raw: pd.DataFrame):
     df["radar_occurrence_max_dt0h"] = (df["radar_max_dt0h"] > 0).astype(int)
 
     # Most local definition
-    df["radar_occurrence_central_dt0h"] = (df["radar_central_dt0h"] > 0).astype(int)
+    df["radar_occurrence_central_dt0h"] = (df["X_p01_dt0h"] > 0).astype(int)
 
     # Definitions using a small physical threshold
     df["radar_occurrence_max_all_bucket"] = (df["radar_max"] >= BUCKET_RESOLUTION).astype(int)
     df["radar_occurrence_max_dt0h_bucket"] = (df["radar_max_dt0h"] >= BUCKET_RESOLUTION).astype(int)
     df["radar_occurrence_central_dt0h_bucket"] = (
-        df["radar_central_dt0h"] >= BUCKET_RESOLUTION
+        df["X_p01_dt0h"] >= BUCKET_RESOLUTION
     ).astype(int)
 
  
@@ -153,7 +153,7 @@ def prepare_analysis_dataframe(df_raw: pd.DataFrame):
 
         "radar_max", "radar_mean", "radar_sum",
         "radar_max_dt0h", "radar_mean_dt0h", "radar_sum_dt0h",
-        "radar_central_dt0h",
+        "X_p01_dt0h",
 
         *x_cols27,
     ]
@@ -176,7 +176,7 @@ def prepare_analysis_dataframe(df_raw: pd.DataFrame):
             "radar_max_dt0h",
             "radar_mean_dt0h",
             "radar_sum_dt0h",
-            "radar_central_dt0h",
+            "X_p01_dt0h",
         ]
         + x_cols27
     ))
@@ -579,7 +579,7 @@ def fig_top_correlations(df_pos: pd.DataFrame, x_cols_all: list[str]):
     top_corrs_plot.index = [pretty_covariate_name(v) for v in top_corrs_plot.index]
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    top_corrs_plot.sort_values().plot(kind="barh", ax=ax)
+    top_corrs_plot.sort_values().plot(kind="barh", ax=ax, color="steelblue", alpha=0.8)
     ax.set_xlabel(r"Pearson correlation with $X_{\mathbf{s},t}$")
     ax.set_ylabel("")
     add_grid(ax, axis="x")

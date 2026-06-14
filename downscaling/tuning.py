@@ -4,9 +4,9 @@ from typing import Any, Dict, Optional
 import pandas as pd
 import numpy as np
 
-from downscaling.config import SIGMA_INIT, KAPPA_INIT
-from downscaling.splits import make_single_split_from_train
-from downscaling.nn import Config, parse_widths
+from downscaling.settings import SIGMA_INIT, KAPPA_INIT
+from downscaling.data import make_single_split_from_train
+from downscaling.neural import Config, parse_widths
 from downscaling.evaluation import (
     evaluate_nn_config_on_split,
     evaluate_nn_config_on_split_fast,
@@ -14,10 +14,11 @@ from downscaling.evaluation import (
 from downscaling.regression import get_gam_initial_values
 from downscaling.utils import make_param_grid
 from downscaling.scores import score_one_prediction_table
+from downscaling.diagnostics import add_prediction_quantities
 from downscaling.prediction import fit_predict_nn_test
 
-from downscaling.paths import OUT_DIR
-from downscaling.config import (
+from downscaling.settings import OUT_DIR
+from downscaling.settings import (
     LAMBDA_PROP_KAPPA_GT2,
     LAMBDA_EXCESS_KAPPA,
     QUANTILES_FOR_DIAGNOSTICS,

@@ -121,7 +121,7 @@ def summarize_month_maps(
             kappa_mean=("kappa", "mean"),
             radar_mean_dt0h=("radar_mean_dt0h", "mean"),
             radar_max_dt0h=("radar_max_dt0h", "mean"),
-            radar_central_dt0h=("radar_central_dt0h", "mean"),
+            radar_central_dt0h=("X_p01_dt0h", "mean"),
         )
         .reset_index()
     )

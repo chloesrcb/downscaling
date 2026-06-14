@@ -1,5 +1,6 @@
 import ast
 import numpy as np
+import pandas as pd
 from itertools import product
 from downscaling.plotting import pretty_predictor_name
 

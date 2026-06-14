@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from downscaling.egpd import (
-    compute_pit,
+    compute_pit as compute_egpd_pit,
     egpd_cdf,
     predicted_mean_mc,
     qegpd,
@@ -14,7 +14,7 @@ from downscaling.egpd import (
 qeGPD = qegpd
 
 from typing import Sequence
-from downscaling.config import (
+from downscaling.settings import (
     KAPPA_LIMIT, REFERENCE_MODEL, MODEL_ORDER, MODEL_ORDER_NO_REF, STATION_COL_CANDIDATES
 )
 
@@ -327,7 +327,7 @@ def summarize_distribution_metrics(y, sigma, kappa, xi):
         out[f"exc_{p:.2f}"] = float(1.0 - cover)
         out[f"abs_calib_err_{p:.2f}"] = float(abs(cover - p))
 
-    pit = compute_pit(y, sigma, kappa, xi)
+    pit = compute_egpd_pit(y, sigma, kappa, xi)
 
     out["pit_mean"] = float(np.mean(pit))
     out["pit_var"] = float(np.var(pit, ddof=1)) if len(pit) > 1 else np.nan
@@ -567,6 +567,7 @@ def score_one_prediction_table(pred_df: pd.DataFrame, alpha: float = 1.0) -> dic
     return {
         "n": len(pred_df),
         "crps_mean": metrics.get("crps_mean", np.nan),
+        "crps_sum": metrics.get("crps_sum", np.nan),
         "twcrps_sum": tw["twcrps_sum"],
         "twcrps_mean": tw["twcrps_mean"],
         "twcrps_n_obs": tw["twcrps_n_obs"],
@@ -611,6 +612,8 @@ def summarize_loso_scores(loso_scores: pd.DataFrame) -> pd.DataFrame:
             twcrps_mean_mean_site=("twcrps_mean", "mean"),
             crps_mean=("crps_mean", "mean"),
             crps_sd=("crps_mean", "std"),
+            crps_sum=("crps_sum", "mean"),
+            crps_sum_sd=("crps_sum", "std"),
             smad_mean=("smad", "mean"),
             smad_sd=("smad", "std"),
             pit_cvm_mean=("pit_cvm", "mean"),
@@ -629,6 +632,7 @@ def summarize_loso_scores(loso_scores: pd.DataFrame) -> pd.DataFrame:
         "twcrps_sum_mean_site",
         "twcrps_mean_mean_site",
         "crps_mean",
+        "crps_sum",
         "smad_mean",
         "pit_cvm_mean",
         "kappa_q99_mean",
@@ -651,10 +655,11 @@ def add_skill_scores_vs_reference(
     if group_cols is None:
         group_cols = []
     if score_cols is None:
-        score_cols = ["crps_mean", "twcrps_sum", "twcrps_mean"]
+        score_cols = ["crps_mean", "crps_sum", "twcrps_sum", "twcrps_mean"]
 
     skill_names = {
         "crps_mean": "crps_skill",
+        "crps_sum": "crps_sum_skill",
         "twcrps_sum": "twcrps_skill",
         "twcrps_mean": "twcrps_mean_skill",
         "smad": "smad_skill",

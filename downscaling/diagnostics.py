@@ -6,11 +6,11 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from downscaling.egpd import egpd_cdf, egpd_mean, qegpd
-from downscaling.paths import DIAG_DIR
+from downscaling.settings import DIAG_DIR
 from downscaling.plotting import PLOT_DPI, clean_figure, configure_plot_style, pretty_predictor_name, save_png
-from downscaling.splits import make_train_valid_test_split
+from downscaling.data import make_train_valid_test_split
 
-from downscaling.config import MODEL_ORDER
+from downscaling.settings import MODEL_ORDER
 
 
 configure_plot_style()

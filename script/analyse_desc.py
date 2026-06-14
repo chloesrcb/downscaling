@@ -7,6 +7,8 @@ import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
+from downscaling.settings import ANA_DIR
+OUT_DIR = ANA_DIR / "outputs"
 
 from downscaling.analysis import (
     prepare_analysis_dataframe,
@@ -28,8 +30,8 @@ from downscaling.analysis import (
     fig_example_events,
 )
 
-from downscaling.paths import DOWNSCALING_TABLE, TAB_DIR
-from downscaling.paths import make_output_dirs
+from downscaling.settings import DOWNSCALING_TABLE, TAB_DIR
+from downscaling.settings import make_output_dirs
 
 make_output_dirs()
 
@@ -76,6 +78,9 @@ fig_tipping_bucket_discretization(df_pos)
 
 #%%
 # Predictor-response relationship.
+# remove "radar_central_dt0h" from x_cols_all if it exists
+if "radar_central_dt0h" in x_cols_all:
+    x_cols_all.remove("radar_central_dt0h")
 fig_top_correlations(df_pos, x_cols_all)
 fig_lag_correlations(df_pos, x_cols27)
 fig_scatter_radar_gauge(df_pos, predictor="radar_max")

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from downscaling.config import (
+from downscaling.settings import (
     CENSOR_THRESHOLD,
     KAPPA_INIT,
     SIGMA_INIT,
@@ -15,18 +15,18 @@ from downscaling.egpd import (
     egpd_left_censored_nll,
     egpd_left_censored_nll_sum,
 )
-from downscaling.models import EGPDNNOnlyInputs
-from downscaling.nn import Config, parse_widths, predict_params_on_df_variant
-from downscaling.features import standardize_train_only
+from downscaling.neural import EGPDNNOnlyInputs
+from downscaling.neural import Config, parse_widths, predict_params_on_df_variant
+from downscaling.data import standardize_train_only
 from downscaling.occurrence import train_logit_model, predict_occurrence_probability
 from downscaling.regression import (
     fit_egpd_regression_model,
     predict_egpd_regression_model,
 )
 from downscaling.scores import make_prediction_df, make_test_metric_row
-from downscaling.splits import make_single_split_from_train
+from downscaling.data import make_single_split_from_train
 from downscaling.stationary import fit_egpd_stationary_direct
-from downscaling.nn import run_one_nn_variant
+from downscaling.neural import run_one_nn_variant
 
 @torch.no_grad()
 def predict_params(model, X_s=None, X_k=None, offset=None, device=None):

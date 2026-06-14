@@ -8,7 +8,7 @@ from downscaling.egpd import (
     egpd_left_censored_nll_sum,
 )
 
-from downscaling.config import SIGMA_INIT, KAPPA_INIT, XI_INIT
+from downscaling.settings import SIGMA_INIT, KAPPA_INIT, XI_INIT
 
 
 def fit_egpd_stationary_direct(

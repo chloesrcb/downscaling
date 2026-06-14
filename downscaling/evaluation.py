@@ -8,7 +8,7 @@ from downscaling.egpd import (
     egpd_left_censored_nll,
     egpd_left_censored_nll_sum,
 )
-from downscaling.nn import Config, parse_widths, predict_params_on_df_variant
+from downscaling.neural import Config, parse_widths, predict_params_on_df_variant
 from downscaling.regression import (
     fit_egpd_regression_model,
     predict_egpd_regression_model,
@@ -18,7 +18,7 @@ from downscaling.scores import (
     summarize_distribution_metrics,
 )
 from downscaling.stationary import fit_egpd_stationary_direct
-from downscaling.nn import run_one_nn_variant
+from downscaling.neural import run_one_nn_variant
 
 def evaluate_nn_config_on_split(
     df_model: pd.DataFrame,
