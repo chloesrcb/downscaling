@@ -87,21 +87,21 @@ print(stations)
 nn_param_grid = {
     "variant": ["both"],
     "x_set_name": ["radar_time_space"],
-    "widths": [(4, 2), (6, 3), (8, 4), (12, 6, 3)],
+    "widths": [(8, 4),],
     "lr": [1e-3],
     "weight_decay": [0.0],
     "batch_size": [128],
     "n_ep": [100],
     "sigma_init": [0.53],
     "kappa_init": [0.31],
-    "xi_init": [0.15, 0.2, 0.25, 0.3],
-    "censor_threshold": [0.22, 0.23, 0.25, 0.3],
+    "xi_init": [0.18],
+    "censor_threshold": [0.3],
     "init_source": ["default"],
-    "kappa_max_nn": [1, 1.5],
-    "lambda_kappa": [5],
+    "kappa_max_nn": [1],
+    "lambda_kappa": [5, 10],
 }
 
-TUNING_STATIONS = ["cnrs", "iem", "poly"]
+TUNING_STATIONS = ["cnrs", "iem", "poly", "crbm", "um"]
 # TUNING_STATIONS = select_tuning_stations(df_model, stations, STATION_COL, n_tuning_stations=5)
 
 tuning_loso_df, best_params_final = tune_nn_loso(

@@ -49,9 +49,9 @@ SEED = 2026
 GRID_RES_M = 100
 GRID_BUFFER_M = 500
 
-MONTH_LABEL = "sep2022"
-START_DATE = "2022-09-01"
-END_DATE = "2022-10-01"
+MONTH_LABEL = "sep2020"
+START_DATE = "2020-09-01"
+END_DATE = "2020-10-01"
 
 # Predictions are made at 5-min resolution.
 PRED_FREQ = "5min"
@@ -79,8 +79,8 @@ BEST_PARAMS = {
     "weight_decay": 0.0,
     "batch_size": 128,
     "n_ep": 300,
-    "sigma_init": 0.58,
-    "kappa_init": 0.27,
+    "sigma_init": 0.53,
+    "kappa_init": 0.31,
     "xi_init": 0.18,
     "censor_threshold": 0.3,
     "init_source": "default",
@@ -389,7 +389,6 @@ summary_all.to_csv(
     OUT_DIR / f"summary_{MONTH_LABEL}_all_5min_steps.csv",
     index=False,
 )
-#%%
 
 # %%
 # summaries restricted to radar-wet 5-min steps
@@ -423,7 +422,6 @@ summary_dry.to_csv(
     index=False,
 )
 
-#%%
 # %%
 import numpy as np
 import matplotlib.pyplot as plt
@@ -565,8 +563,8 @@ plot_one_map(
     value_col="prob_occ_5min_mean",
     label="Mean occurrence probability (%)",
     filename=OUT_DIR / f"map_{MONTH_LABEL}_prob_occ_percent.png",
-    vmin=0.8,
-    vmax=2.5,
+    # vmin=2,
+    # vmax=3,
     display_factor=100.0,
     cmap=RAIN_CMAP,
     cbar_format="%.2f",
@@ -591,7 +589,7 @@ plot_one_map(
     label="Mean rainfall | X > local q95 (mm / 5 min)",
     filename=OUT_DIR / f"map_{MONTH_LABEL}_mean_above_q95.png",
     vmin=0.3,
-    vmax=0.7,
+    vmax=0.9,
     cmap=RAIN_CMAP,
     gauges_plot=gauges_plot,
 )
@@ -602,8 +600,8 @@ plot_one_map(
     value_col="rain_monthly_sum_expected",
     label="Expected monthly rainfall accumulation (mm)",
     filename=OUT_DIR / f"map_{MONTH_LABEL}_rain_monthly_sum_expected.png",
-    vmin=50,
-    vmax=420,
+    # vmin=50,
+    # vmax=420,
     cmap=RAIN_CMAP,
     gauges_plot=gauges_plot,
 )
@@ -614,8 +612,8 @@ plot_one_map(
     value_col="log_rain_pos_q95",
     label="95th percentile (mm / 5 min, log scale)",
     filename=OUT_DIR / f"map_{MONTH_LABEL}_log_rain_pos_q95.png",
-    vmin=0.15,
-    vmax=0.35,
+    # vmin=0.15,
+    # vmax=0.35,
     cmap=RAIN_CMAP,
     gauges_plot=gauges_plot,
 )
@@ -626,10 +624,10 @@ plot_one_map(
     value_col="log_rain_pos_q99",
     label="99th percentile (mm / 5 min, log scale)",
     filename=OUT_DIR / f"map_{MONTH_LABEL}_log_rain_pos_q99.png",
-    vmin=0.35,
+    # vmin=0.35,
 
 
-    vmax=0.6,
+    # vmax=0.6,
     cmap=RAIN_CMAP,
     gauges_plot=gauges_plot,
 )
@@ -640,9 +638,9 @@ plot_one_map(
     value_col="rain_pos_q95",
     label="95th percentile (mm / 5 min)",
     filename=OUT_DIR / f"map_{MONTH_LABEL}_rain_pos_q95.png",
-    vmin=0.2,
+    # vmin=0.2,
 
-    vmax=0.45,
+    # vmax=0.45,
     cmap=RAIN_CMAP,
     gauges_plot=gauges_plot,
 )
@@ -724,12 +722,14 @@ comp = pd.concat(
 
 comp["dist_to_grid_m"] = dist
 
-#%%
-comp["bias_monthly_sum"] = comp["sim_rain_monthly_sum_expected"] - comp["obs_monthly_sum"]
-comp["bias_wet_fraction"] = comp["sim_prob_occ_5min_mean"] - comp["obs_wet_5min_fraction"]
-comp["bias_pos_mean"] = comp["sim_rain_pos_mean"] - comp["obs_pos_mean"]
+comp_valid = comp[comp["dist_to_grid_m"] <= 50].copy()
 
-print(comp[
+#%%
+comp_valid["bias_monthly_sum"] = comp_valid["sim_rain_monthly_sum_expected"] - comp_valid["obs_monthly_sum"]
+comp_valid["bias_wet_fraction"] = comp_valid["sim_prob_occ_5min_mean"] - comp_valid["obs_wet_5min_fraction"]
+comp_valid["bias_pos_mean"] = comp_valid["sim_rain_pos_mean"] - comp_valid["obs_pos_mean"]
+
+print(comp_valid[
     [
         "station",
         "obs_monthly_sum",
@@ -790,9 +790,9 @@ cbar.set_label("Expected monthly rainfall accumulation (mm)")
 
 # stations colorées par biais
 sc = ax.scatter(
-    comp["x_l93"],
-    comp["y_l93"],
-    c=comp["bias_monthly_sum"],
+    comp_valid["x_l93"],
+    comp_valid["y_l93"],
+    c=comp_valid["bias_monthly_sum"],
     s=80,
     cmap="coolwarm",
     edgecolor="black",
@@ -815,14 +815,14 @@ plt.show()
 fig, ax = plt.subplots(figsize=(5, 5))
 
 ax.scatter(
-    comp["obs_monthly_sum"],
-    comp["sim_rain_monthly_sum_expected"],
+    comp_valid["obs_monthly_sum"],
+    comp_valid["sim_rain_monthly_sum_expected"],
     s=50,
     edgecolor="black",
 )
 
-lim_min = min(comp["obs_monthly_sum"].min(), comp["sim_rain_monthly_sum_expected"].min())
-lim_max = max(comp["obs_monthly_sum"].max(), comp["sim_rain_monthly_sum_expected"].max())
+lim_min = min(comp_valid["obs_monthly_sum"].min(), comp_valid["sim_rain_monthly_sum_expected"].min())
+lim_max = max(comp_valid["obs_monthly_sum"].max(), comp_valid["sim_rain_monthly_sum_expected"].max())
 
 ax.plot([lim_min, lim_max], [lim_min, lim_max], "k--", linewidth=1)
 
@@ -835,9 +835,9 @@ fig.savefig(OUT_DIR / f"scatter_{MONTH_LABEL}_obs_vs_sim_monthly_sum.png", dpi=3
 plt.show()
 
 #%%
-comp["obs_minus_sim"] = comp["obs_monthly_sum"] - comp["sim_rain_monthly_sum_expected"]
+comp_valid["obs_minus_sim"] = comp_valid["obs_monthly_sum"] - comp_valid["sim_rain_monthly_sum_expected"]
 
-print(comp[[
+print(comp_valid[[
     "station",
     "obs_monthly_sum",
     "sim_rain_monthly_sum_expected",

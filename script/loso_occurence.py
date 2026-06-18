@@ -28,7 +28,7 @@ from downscaling.occurrence import (
 
 configure_plot_style()
 
-OUT_DIR = Path(IM_FOLDER) / "leave_one_site_out_occurrence"
+OUT_DIR = Path(IM_FOLDER) / "leave_one_site_out_occurrence_filter"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 SEED = 2026
@@ -148,7 +148,7 @@ df_occ, x_cols27, x_cols = prepare_occurrence_dataframe(
     use_spatial=True,
     use_summaries=True,
     use_cube=False,
-    remove_incoherent=False,
+    remove_incoherent=True,
     summary_scale="raw", 
 )
 
