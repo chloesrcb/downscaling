@@ -109,5 +109,5 @@ fig_station_spatial_patterns(df_all)
 
 #%%
 # Example event days.
-fig_example_events(df_all, n_events=3)
+fig_example_events(df_all, n_events=5)
 # %%

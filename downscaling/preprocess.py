@@ -86,37 +86,45 @@ def build_station_radius_pixels(
 
     location_gauges = pd.read_csv(paths.filename_loc_gauges)
 
+    # --- Harmonise station names ---
     if "station" not in location_gauges.columns:
-        if "codestation" in location_gauges.columns:
-            location_gauges["station"] = location_gauges["codestation"].astype(str)
-        elif "Station" in location_gauges.columns:
+        if "Station" in location_gauges.columns:
             location_gauges["station"] = location_gauges["Station"].astype(str)
+        elif "codestation" in location_gauges.columns:
+            location_gauges["station"] = location_gauges["codestation"].astype(str)
         else:
-            raise ValueError("No station id column found.")
+            raise ValueError("No station column found in location_gauges.")
 
+    location_gauges["station"] = location_gauges["station"].astype(str)
+
+    # Keep only gauges present in rainfall table
     rain_stations = [c for c in rain_hsm.columns if c != "dates"]
     location_gauges = location_gauges[
         location_gauges["station"].isin(rain_stations)
     ].copy()
 
+    missing_loc = sorted(set(rain_stations) - set(location_gauges["station"]))
+    if missing_loc:
+        raise ValueError(f"Missing coordinates for stations: {missing_loc}")
+
+    # --- CRS transformers ---
     to_l93 = Transformer.from_crs("EPSG:4326", "EPSG:2154", always_xy=True)
     to_lonlat = Transformer.from_crs("EPSG:2154", "EPSG:4326", always_xy=True)
 
+    # --- Pixel coordinates ---
     c1 = loc_px["coord1"].to_numpy(float)
     c2 = loc_px["coord2"].to_numpy(float)
 
-    # Detect CRS of pixel coordinates
-    # If values look like lon/lat around Montpellier
     if (np.nanmedian(np.abs(c1)) < 20) and (np.nanmedian(np.abs(c2)) < 90):
+        # Pixel file already in lon/lat
         loc_px["lon_X"] = c1
         loc_px["lat_X"] = c2
-        px_x, px_y = to_l93.transform(c1, c2)
-        loc_px["X_m"] = px_x
-        loc_px["Y_m"] = px_y
+        x_m, y_m = to_l93.transform(c1, c2)
+        loc_px["X_m"] = x_m
+        loc_px["Y_m"] = y_m
         print("Pixel coordinates detected as lon/lat.")
-
-    # If values look like Lambert-93 metres
     else:
+        # Pixel file in Lambert-93
         loc_px["X_m"] = c1
         loc_px["Y_m"] = c2
         lon, lat = to_lonlat.transform(c1, c2)
@@ -124,46 +132,71 @@ def build_station_radius_pixels(
         loc_px["lat_X"] = lat
         print("Pixel coordinates detected as Lambert-93.")
 
+    # --- Gauge coordinates in Lambert-93 ---
     g_x, g_y = to_l93.transform(
         location_gauges["Longitude"].to_numpy(float),
         location_gauges["Latitude"].to_numpy(float),
     )
-
     location_gauges["X_m"] = g_x
     location_gauges["Y_m"] = g_y
 
-    px_xy = np.column_stack([loc_px["X_m"].to_numpy(), loc_px["Y_m"].to_numpy()])
-    g_xy = np.column_stack([location_gauges["X_m"].to_numpy(), location_gauges["Y_m"].to_numpy()])
-
-    nearest_idx = np.empty(len(location_gauges), dtype=np.int64)
-
-    for i in range(len(location_gauges)):
-        d2 = ((px_xy - g_xy[i]) ** 2).sum(axis=1)
-        nearest_idx[i] = int(np.argmin(d2))
-
-    location_gauges["closest_pixel"] = loc_px["pixel_name"].iloc[nearest_idx].to_numpy()
-    location_gauges["lon_X"] = loc_px["lon_X"].iloc[nearest_idx].to_numpy()
-    location_gauges["lat_X"] = loc_px["lat_X"].iloc[nearest_idx].to_numpy()
+    px_xy = np.column_stack([
+        loc_px["X_m"].to_numpy(float),
+        loc_px["Y_m"].to_numpy(float),
+    ])
 
     station_pixels: Dict[str, List[str]] = {}
+
+    closest_pixel = []
+    closest_lon = []
+    closest_lat = []
+    closest_dist = []
 
     for _, row in location_gauges.iterrows():
         st = row["station"]
 
-        cidx = int(np.where(loc_px["pixel_name"].to_numpy() == row["closest_pixel"])[0][0])
-        cx, cy = loc_px["X_m"].iloc[cidx], loc_px["Y_m"].iloc[cidx]
+        gx = float(row["X_m"])
+        gy = float(row["Y_m"])
 
-        dx = loc_px["X_m"].to_numpy() - cx
-        dy = loc_px["Y_m"].to_numpy() - cy
-        dist = np.sqrt(dx * dx + dy * dy)
+        # Pixel centre closest to the station
+        d2 = (px_xy[:, 0] - gx) ** 2 + (px_xy[:, 1] - gy) ** 2
+        cidx = int(np.argmin(d2))
 
-        pix_df = loc_px.loc[dist <= radius_m, ["pixel_name", "X_m", "Y_m"]].copy()
-        pix_df["dist_to_center"] = np.sqrt(
-            (pix_df["X_m"] - cx) ** 2 + (pix_df["Y_m"] - cy) ** 2
+        cx = float(loc_px.iloc[cidx]["X_m"])
+        cy = float(loc_px.iloc[cidx]["Y_m"])
+
+        closest_pixel.append(loc_px.iloc[cidx]["pixel_name"])
+        closest_lon.append(float(loc_px.iloc[cidx]["lon_X"]))
+        closest_lat.append(float(loc_px.iloc[cidx]["lat_X"]))
+        closest_dist.append(float(np.sqrt(d2[cidx])))
+
+        # Neighbor pixels around the central pixel
+        dist_to_center = np.sqrt(
+            (loc_px["X_m"].to_numpy(float) - cx) ** 2
+            + (loc_px["Y_m"].to_numpy(float) - cy) ** 2
         )
 
-        pix_df = pix_df.sort_values("dist_to_center")
+        pix_df = loc_px.copy()
+        pix_df["dist_to_center"] = dist_to_center
+
+        pix_df = pix_df[pix_df["dist_to_center"] <= radius_m].copy()
+        pix_df = pix_df.sort_values(["dist_to_center", "pixel_name"])
+
         station_pixels[st] = pix_df["pixel_name"].astype(str).tolist()
+
+    location_gauges["closest_pixel"] = closest_pixel
+    location_gauges["lon_X"] = closest_lon
+    location_gauges["lat_X"] = closest_lat
+    location_gauges["dist_gauge_to_pixel_m"] = closest_dist
+
+    # Safety check
+    print("\nGauge to closest radar pixel:")
+    print(
+        location_gauges[
+            ["station", "Longitude", "Latitude", "lon_X", "lat_X",
+             "closest_pixel", "dist_gauge_to_pixel_m"]
+        ].sort_values("station").to_string(index=False)
+    )
 
     return location_gauges, loc_px, station_pixels
 
@@ -191,7 +224,7 @@ def read_comephore_filtered(
 def build_table(
     paths: Paths,
     start: str = "2019-01-01",
-    end: str = "2025-01-01",
+    end: str = "2026-01-01",
     radius_m: float = 1500.0,
     n_feat: int = 27,
     n_jobs: int = 1,
@@ -239,13 +272,20 @@ def build_table(
 
     # output columns
     X_cols = make_X_names(n_feat=n_feat)
-    out_cols = ["time", "station", "lon_Y", "lat_Y", "lon_X", "lat_X", "Y_obs"] + X_cols
+    out_cols = [
+        "time", "station",
+        "lon_Y", "lat_Y",
+        "lon_X", "lat_X",
+        "dist_gauge_to_pixel_m",
+        "Y_obs"
+    ] + X_cols
 
     # station metadata lookup
     st_lonY = dict(zip(location_gauges["station"], location_gauges["Longitude"]))
     st_latY = dict(zip(location_gauges["station"], location_gauges["Latitude"]))
     st_lonX = dict(zip(location_gauges["station"], location_gauges["lon_X"]))
     st_latX = dict(zip(location_gauges["station"], location_gauges["lat_X"]))
+    st_dist = dict(zip(location_gauges["station"], location_gauges["dist_gauge_to_pixel_m"]))
 
     gauge_cols = [c for c in rain_hsm.columns if c != "dates"]
 
@@ -295,6 +335,7 @@ def build_table(
                 "lat_Y": float(st_latY[st]),
                 "lon_X": float(st_lonX[st]),
                 "lat_X": float(st_latX[st]),
+                "dist_gauge_to_pixel_m": float(st_dist.get(st, np.nan)),
                 "Y_obs": float(y),
             }
             for j, col in enumerate(X_cols):

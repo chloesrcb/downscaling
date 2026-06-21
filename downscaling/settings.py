@@ -37,7 +37,7 @@ QUANTILES_FOR_DIAGNOSTICS = (
 DATA_FOLDER = Path(os.environ.get("DATA_FOLDER", "../../phd_extremes/data/"))
 IM_FOLDER = Path("../../phd_extremes/thesis/resources/images/downscaling/")
 
-DOWNSCALING_TABLE = DATA_FOLDER / "downscaling" / "downscaling_table_named_2019_2025.csv"
+DOWNSCALING_TABLE = DATA_FOLDER / "downscaling" / "downscaling_table_named_2019_2025_new.csv"
 
 OUT_COMPARISON = DATA_FOLDER / "downscaling" / "model_comparison_all_variants.csv"
 OUT_TUNING = DATA_FOLDER / "downscaling" / "nn_tuning_history.csv"

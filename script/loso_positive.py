@@ -47,7 +47,7 @@ from downscaling.settings import SEED, DEVICE, KAPPA_INIT, SIGMA_INIT, XI_INIT, 
 make_output_dirs()
 configure_plot_style()
 
-OUT_DIR = Path(IM_FOLDER) / "LOSO_intensity"
+OUT_DIR = Path(IM_FOLDER) / "LOSO_intensity_all_gauges"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -56,10 +56,12 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 df_raw = pd.read_csv(DOWNSCALING_TABLE, sep=";")
 df_raw["time"] = pd.to_datetime(df_raw["time"], utc=True)
 
-# remove brives hydro and cines sites
-df_raw[df_raw["station"].isin(["brives", "hydro", "cines"])].to_csv(OUT_DIR / "removed_stations.csv", index=False)
+#%% 
+# remove brives, hydro, cines stations from df_raw
+stations_to_remove = ["brives", "hydro", "cines"]
+df_raw = df_raw[~df_raw["station"].isin(stations_to_remove)].copy()
 
-
+#%%
 df_model, x_cols27, x_cols_dt0h, x_cols_all = prepare_modeling_dataframe(df_raw)
 
 STATION_COL = find_station_col(df_model)
@@ -82,27 +84,43 @@ print(stations)
 #%%
 # kappa sigma xi init values
 #  $0.307$ & $0.532$ & $0.254$
+# # do egpd fit on all data to get initial values for kappa, sigma, xi
+# from downscaling.stationary import fit_egpd_stationary_direct
+
+
+# y = df_model["Y_obs"].values
+# fit = fit_egpd_stationary_direct(
+#     y_train=y,
+#     fix_xi=False,
+#     censor_threshold=0.23,
+# )
+
+# kappa_init = fit["kappa_hat"]
+# sigma_init = fit["sigma_hat"]
+# xi_init = fit["xi_hat"]
+
 # %%
 # NN LOSO tuning
 nn_param_grid = {
     "variant": ["both"],
     "x_set_name": ["radar_time_space"],
-    "widths": [(8, 4),],
+    "widths": [(8, 4)],
     "lr": [1e-3],
     "weight_decay": [0.0],
     "batch_size": [128],
     "n_ep": [100],
-    "sigma_init": [0.53],
-    "kappa_init": [0.31],
-    "xi_init": [0.18],
+    "sigma_init": [0.5],
+    "kappa_init": [0.3],
+    "xi_init": [0.20],
     "censor_threshold": [0.3],
     "init_source": ["default"],
     "kappa_max_nn": [1],
-    "lambda_kappa": [5, 10],
+    "lambda_kappa": [5],
 }
 
-TUNING_STATIONS = ["cnrs", "iem", "poly", "crbm", "um"]
-# TUNING_STATIONS = select_tuning_stations(df_model, stations, STATION_COL, n_tuning_stations=5)
+TUNING_STATIONS = ["cnrs", "iem", "poly"]
+# from downscaling.tuning import select_tuning_stations
+# TUNING_STATIONS = select_tuning_stations(df_model, stations, STATION_COL, n_tuning_stations=10)
 
 tuning_loso_df, best_params_final = tune_nn_loso(
     df_model=df_model,
@@ -122,6 +140,24 @@ print(best_params_final)
 best_params_final["n_ep"] = 300
 pd.DataFrame([best_params_final]).to_csv(OUT_DIR / "loso_best_nn_params.csv", index=False)
 
+#%%
+# without tuning
+best_params_final = {
+    "variant": "both",
+    "x_set_name": "radar_time_space",
+    "widths": (8, 4),
+    "lr": 1e-3,
+    "weight_decay": 0.0,
+    "batch_size": 128,
+    "n_ep": 300,
+    "sigma_init": 0.5,
+    "kappa_init": 0.3,
+    "xi_init": 0.18,
+    "censor_threshold": 0.3,
+    "init_source": "default",
+    "kappa_max_nn": 1,
+    "lambda_kappa": 5,
+}
 
 # %%
 # Final LOSO evaluation
@@ -144,8 +180,27 @@ MODEL_ORDER_NO_REF = [m for m in MODEL_ORDER_NO_REF if m in pred_loso_all["model
 
 
 # %%
-# Scores, skill scores, and thesis tables
+#%%
 loso_scores_by_station = score_loso_by_station(pred_loso_all)
+
+loso_scores_by_station_skill = add_skill_scores_vs_reference(
+    scores_df=loso_scores_by_station,
+    group_cols=["left_out_station"],
+    ref_model=REFERENCE_MODEL,
+    score_cols=["crps_mean", "crps_sum", "twcrps_sum", "twcrps_mean"],
+)
+
+print(
+    loso_scores_by_station_skill
+    .pivot(index="left_out_station", columns="model", values="crps_skill")
+    .round(3)
+)
+
+#%%
+summary_loso = summarize_loso_scores(loso_scores_by_station)
+
+
+#%%
 loso_scores_by_station.to_csv(OUT_DIR / "loso_scores_by_station.csv", index=False)
 
 summary_loso = summarize_loso_scores(loso_scores_by_station)
@@ -252,6 +307,8 @@ delta_table = delta_table[[
 latex_table = delta_table.to_latex(index=False, float_format="%.5f", caption="Delta to best scores for various metrics", label="tab:loso_delta_to_best_scores")
 
 print(latex_table)
+
+#%%
 
 # %%
 plot_global_score_and_skill_summary(

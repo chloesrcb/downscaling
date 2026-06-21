@@ -854,7 +854,7 @@ def fig_example_events(df_all: pd.DataFrame, n_events: int = 3):
         )
 
         ax.set_xlabel("Time", size=14)
-        ax.set_ylabel(r"Rainfall amount (mm / 5 min)", size=14)
+        ax.set_ylabel(r"Rainfall amount (mm)", size=14)
         ax.legend()
         add_grid(ax)
 
